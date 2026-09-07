@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Builds
+.next/
+out/
+dist/
+build/
+
+# Cloudflare local state (local D1/R2 data — never commit)
+.wrangler/
+.miniflare/
+
+# Env & secrets
+.env
+.env.*
+!.env.example
+
+# Logs & OS
+*.log
+.DS_Store
+
+# Test/coverage artifacts
+coverage/
+*.tsbuildinfo
