@@ -1,0 +1,30 @@
+{
+  "name": "sambet-api",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Sambet Grassroots Project — member organization registry API (Cloudflare Workers + D1 + R2)",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.scripts.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:integration": "node scripts/integration-test.mjs",
+    "seed": "tsx scripts/generate-seed.ts",
+    "migrations": "wrangler d1 migrations apply sambet-db"
+  },
+  "dependencies": {
+    "hono": "^4.6.14",
+    "xlsx": "0.18.5",
+    "zod": "3.23.8"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241230.0",
+    "@types/node": "^22.20.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.8",
+    "wrangler": "^3.109.1"
+  }
+}
