@@ -82,12 +82,15 @@ authRoutes.post('/login', async (c) => {
 
   const user = await c.env.DB.prepare('SELECT * FROM users WHERE email = ?')
     .bind(email)
-    .first<{ id: number; email: string; name: string; password_hash: string }>();
+    .first<{ id: number; email: string; name: string; role: string; password_hash: string; disabled_at: string | null }>();
   const ok = user
     ? await verifyPassword(password, user.password_hash)
     : await verifyPassword(password, DUMMY_HASH);
   if (!user || !ok) {
     return c.json({ error: 'Incorrect e-mail or password.' }, 401);
+  }
+  if (user.disabled_at != null) {
+    return c.json({ error: 'This account has been disabled. Contact an administrator.' }, 403);
   }
 
   await c.env.DB.prepare(`UPDATE users SET last_login_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`)
@@ -99,7 +102,7 @@ authRoutes.post('/login', async (c) => {
   const headers: Record<string, string> = { 'Set-Cookie': session.cookie };
   const origin = c.req.header('origin');
   if (origin && isAllowedOrigin(origin, c.env)) Object.assign(headers, corsHeaders(origin));
-  return c.json({ ok: true, user: { id: user.id, name: user.name, email: user.email, role: 'admin' } }, 200, headers);
+  return c.json({ ok: true, user: { id: user.id, name: user.name, email: user.email, role: user.role } }, 200, headers);
 });
 
 authRoutes.post('/logout', async (c) => {

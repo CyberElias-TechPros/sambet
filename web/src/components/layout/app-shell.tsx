@@ -13,6 +13,7 @@ import {
   Sprout,
   Menu,
   X,
+  Users,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { initials } from '@/lib/format';
@@ -21,6 +22,7 @@ const NAV = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/organizations', label: 'Organizations', icon: Building2 },
   { href: '/import', label: 'Import', icon: Upload },
+  { href: '/team', label: 'Team', icon: Users, adminOnly: true },
   { href: '/audit', label: 'Audit log', icon: ScrollText },
   { href: '/settings', label: 'Settings', icon: Settings },
 ];
@@ -45,9 +47,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  const items = NAV.filter((i) => !i.adminOnly || user?.role === 'admin');
+
   const nav = (onNav?: () => void) => (
     <nav className="mt-6 flex flex-1 flex-col gap-1 px-3">
-      {NAV.map((item) => {
+      {items.map((item) => {
         const active = pathname.startsWith(item.href);
         return (
           <Link

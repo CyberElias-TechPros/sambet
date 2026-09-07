@@ -12,7 +12,7 @@ Two deployables, one database:
 │                             │ /api/* │  ┌──────────┐   ┌────────────────────┐   │
 │  Pages: /login /dashboard   │ (Vercel│  │  Auth    │   │ Organizations      │   │
 │  /organizations /import     │ rewrites,│ │ (sessions│   │ (CRUD, search,     │   │
-│  /audit /settings           │ server- │ │ in D1,   │   │ duplicate &        │   │
+│  /team /audit /settings     │ server- │ │ in D1,   │   │ duplicate &        │   │
 │  /api → proxy → Worker      │ side)   │ │ PBKDF2)  │   │ missing-field      │   │
 │                             │        │  └──────────┘   │ detection)         │   │
 │  Fonts self-hosted          │        │  ┌──────────┐   └────────────────────┘   │
@@ -62,14 +62,18 @@ Two deployables, one database:
 - **Hono 4** with `nodejs_compat`. TypeScript strict mode.
 - **D1 (SQLite)** for all durable data. Schema is idempotent (`CREATE ... IF NOT EXISTS`)
   and self-heals: the worker runs `ensureSchema()` once per isolate on the first `/api/*`
-  request, so a fresh database needs zero manual steps. The canonical migration file
-  (`worker/migrations/0001_init.sql`) is what `wrangler d1 migrations apply` uses for
-  production; both are kept in sync.
+  request, so a fresh database needs zero manual steps. The canonical migrations
+  (`worker/migrations/0001_init.sql`, `0002_import_approval.sql`) are what
+  `wrangler d1 migrations apply` uses for production; `ensureSchema` also picks up the
+  additive 0002 columns on pre-existing databases via `PRAGMA table_info` checks, and
+  both paths stay in sync.
 - **R2** for file storage only:
-  - `uploads/<uploadId>.json` — parsed rows + per-row validation results, kept 1 hour so a
+  - `uploads/<uploadId>.json` / `.file` — parsed rows + original upload, kept 1 hour so a
     preview→execute round-trip can survive a browser tab close.
-  - `uploads/<uploadId>.file` — the original upload, same TTL (for re-validation).
-  - `imports/<importId>/<safe-filename>` — permanent audit archive of every executed import.
+  - `imports/<importId>/payload.json` — parsed rows held while an import waits in the
+    approval queue (no TTL; removed on approve/reject).
+  - `imports/<importId>/<safe-filename>` — permanent audit archive of every import's
+    original file.
 - **No KV, Durable Objects, Queues, or Cron** — deliberately. Rate limiting is a tiny
   fixed-window table in D1 (`rate_limits`), and there is nothing async to queue. See
   [ADR-0001](adr/0001-workers-d1-r2-only.md).
@@ -118,6 +122,35 @@ documented in DEPLOYMENT.md).
 Execute is idempotent per uploadId (a second execute 410s), so a slow reviewer can retry
 safely.
 
+### Import approval (roles — see ADR-0003)
+
+There are two roles: **admin** (data owner) and **editor** (staff). Both can upload a
+workbook and see the preview report; only an admin may *apply* an import directly
+(`/execute`). An editor instead calls:
+
+```
+POST /api/imports/submit  {uploadId, strategy}
+  → moves the R2 payload from uploads/ (1h) into imports/<id>/ (permanent)
+  → creates an imports row with status='pending'. NO records touched.
+```
+
+An admin then reviews on the Import page (full report + archived file) and:
+
+```
+POST /api/imports/:id/approve  {strategy}   (admin only)
+  → re-runs duplicate matching against the CURRENT registry (rows may have changed
+    since submission), then applies with the strategy chosen AT APPROVAL time
+POST /api/imports/:id/reject   {reason}     (admin only)
+  → status='rejected', reason stored and shown in history
+```
+
+Pending submissions expire after 7 days (lazy check on the approval attempt — no cron).
+Every submit/approve/reject is audited. Team management (`/api/users`: list, create with
+one-time temp password, role change, disable/re-enable, password reset) is admin-only,
+with self-protection (you can't disable/demote yourself, and the last active admin can't
+be locked out). Disabling a user deletes their sessions, so they're signed out
+immediately.
+
 ### Duplicate detection
 
 Order of matching (most specific first), scoped to non-deleted rows:
@@ -157,13 +190,14 @@ downloads; the frontend opens them via a short-lived signed URL helper (`api.exp
 |---|---|
 | Passwords | PBKDF2-SHA256, 210,000 iterations, 16 B random salt per user |
 | Sessions | 32 B random token, only its SHA-256 stored; 30-day expiry; `HttpOnly` `SameSite=Lax` cookie; `Secure` flag when the request is HTTPS |
-| Authz | Every `/api/*` route (except `health`, `auth/status`, `auth/setup`, `auth/login`) requires a valid session |
+| Authz | Every `/api/*` route (except `health`, `auth/status`, `auth/setup`, `auth/login`) requires a valid session. Import execution/approval/rejection and all `/api/users` routes additionally require `role='admin'` (403 otherwise) |
 | Brute force | Fixed-window rate limits in D1: login 5/60 s, setup 10/h, import preview 30/h per IP (fail-open on DB error) |
 | User enumeration | Constant-timing login; no user-count leaking from `auth/status` |
 | Input | zod validation on all write endpoints; SQL is parameterized everywhere; HTML is React-escaped in the UI |
 | File uploads | 10 MB cap; only `.xlsx`/`.csv` (by extension, then parse-attempt); original stored in R2 (not served back) |
 | CORS | Only allowed when `Origin` matches `FRONTEND_ORIGIN` (or a dev origin in local mode). Not needed for the primary flow, which is same-origin via the Vercel rewrite |
 | PII | Bank account numbers are stored (business requirement) but never logged; audit `details` excludes account numbers/emails of other parties |
+| Temp passwords | Team-member temp passwords are CSPRNG-generated (all 4 char classes) and returned exactly once; never persisted beyond the PBKDF2 hash |
 
 ## Performance notes
 
@@ -180,11 +214,12 @@ downloads; the frontend opens them via a short-lived signed URL helper (`api.exp
 
 ## Testing
 
-- `worker/`: 85 unit tests (normalization, importer, validation) — `npm test`
-  (Vitest, no network).
-- `worker/scripts/integration-test.mjs`: 77 end-to-end assertions against a real local
+- `worker/`: 90 unit tests (normalization, importer, validation, temp-password policy,
+  approval-expiry) — `npm test` (Vitest, no network).
+- `worker/scripts/integration-test.mjs`: 112 end-to-end assertions against a real local
   `workerd` (fresh state) — auth lifecycle, first-run setup, real-file import, filters,
-  CRUD, duplicate 409s, import preview/execute/retry, export, audit, rate limiting.
-  `npm run test:integration`.
+  CRUD, duplicate 409s, import preview/execute/retry, export, audit, **team roles +
+  import approval queue** (editor submits → admin approves/rejects, permission 403s,
+  disable/enable + session invalidation), and rate limiting. `npm run test:integration`.
 - `web/`: `npm run typecheck` and `npm run build` (production build is clean; routes are
   static, ~87–104 kB first load).

@@ -5,7 +5,7 @@ import { KeyRound, Info } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/hooks/use-auth';
 import { useToast } from '@/hooks/use-toast';
-import { Button, Card, CardHeader, Field, Input } from '@/components/ui/primitives';
+import { Badge, Button, Card, CardHeader, Field, Input } from '@/components/ui/primitives';
 import { initials } from '@/lib/format';
 
 export default function SettingsPage() {
@@ -52,8 +52,13 @@ export default function SettingsPage() {
             {user ? initials(user.name) : '·'}
           </span>
           <div>
-            <p className="text-[15px] font-semibold text-ink">{user?.name}</p>
-            <p className="text-[13px] text-ink-soft">{user?.email} · role: {user?.role}</p>
+            <div className="flex items-center gap-2">
+              <p className="text-[15px] font-semibold text-ink">{user?.name}</p>
+              <Badge tone={user?.role === 'admin' ? 'green' : 'sky'}>
+                {user?.role === 'admin' ? 'Administrator' : 'Staff editor'}
+              </Badge>
+            </div>
+            <p className="mt-0.5 text-[13px] text-ink-soft">{user?.email}</p>
           </div>
         </div>
       </Card>

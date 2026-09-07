@@ -47,8 +47,14 @@ export default function AuditPage() {
             <option value="org.delete">Deletions</option>
             <option value="org.bulk_delete">Bulk deletions</option>
             <option value="import.completed">Imports</option>
+            <option value="import.submitted">Import submissions</option>
+            <option value="import.approved">Import approvals</option>
+            <option value="import.rejected">Import rejections</option>
+            <option value="user.created">Team members added</option>
+            <option value="user.updated">Team member changes</option>
             <option value="account.setup">Account setup</option>
             <option value="password.change">Password changes</option>
+            <option value="password.reset">Password resets</option>
           </Select>
         </div>
       </div>

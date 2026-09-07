@@ -1,8 +1,9 @@
 # Data model
 
-SQLite (Cloudflare D1). Canonical DDL: `worker/migrations/0001_init.sql`.
-The worker also self-heals the same schema at boot (`ensureSchema`), so a fresh database
-works without manual steps.
+SQLite (Cloudflare D1). Canonical DDL: `worker/migrations/0001_init.sql` +
+`worker/migrations/0002_import_approval.sql`. The worker also self-heals the same schema
+at boot (`ensureSchema`, including the additive 0002 columns via `PRAGMA table_info`),
+so a fresh or pre-existing database works without manual steps.
 
 ## Tables
 
@@ -12,14 +13,18 @@ works without manual steps.
 | id | INTEGER PK | |
 | email | TEXT UNIQUE (NOCASE) | login identifier |
 | name | TEXT | display name |
-| password_hash | TEXT | `pbkdf2$sha256$210000$<salt b64>$<hash b64>` |
-| role | TEXT | `'admin'` (single role for now) |
+| password_hash | TEXT | `pbkdf2-sha256$210000$<salt-b64url>$<hash-b64url>` |
+| role | TEXT | `'admin'` or `'editor'` |
 | created_at / last_login_at | TEXT | ISO-8601 UTC |
+| disabled_at | TEXT, nullable | set when disabled — sessions for the user are deleted at the same time; login returns 403 |
 
-Exactly one admin exists in practice: `auth/setup` is only possible while the table is
-empty; additional accounts are created by an admin out-of-band (insert a user row with a
-properly generated hash — there is no in-app "invite" flow, deliberately, to keep the
-trust model simple for a small staff team).
+The first admin is created by `auth/setup` (only possible while the table is empty).
+Additional members are created in-app by an admin on the **Team** page
+(`POST /api/users`, one-time temporary password) or out-of-band (insert a user row with
+a properly generated hash). A user can be `editor` (staff: records + import submissions)
+or `admin` (everything, incl. approving imports and managing the team). Self-protection
+is enforced: you can't disable or demote yourself, and the last active admin can't be
+disabled or demoted.
 
 ### `sessions`
 | Column | Type | Notes |
@@ -64,18 +69,24 @@ in SQL on read, so they can never drift from the data.
 |---|---|
 | id PK | |
 | filename | original upload name |
-| r2_key | `imports/<id>/<safe-filename>` audit archive |
+| r2_key | `imports/<id>/<safe-filename>` — archived original file (kept for completed **and** pending/rejected imports) |
+| payload_key | `imports/<id>/payload.json` — parsed rows while `pending`; deleted on approve/reject |
 | total_rows / created_count / updated_count / skipped_count / error_count | result counters |
-| status | `'completed'` (failed executions are not recorded — the preview/execute contract means partial success is always "completed with N errors") |
-| report | JSON: first error/warning samples + normalization stats |
-| actor_email | who executed it |
+| status | `pending` → `completed` \| `rejected` (review queue); direct admin imports go straight to `completed`; `failed` marks a mid-apply crash |
+| report | JSON: row counts, first error/warning samples, strategy, approver |
+| actor_email | who submitted/executed it |
+| reviewed_by / reviewed_at | who approved or rejected, when |
+| rejection_reason | admin's reason (or the auto `Expired — not reviewed within 7 days`) |
 | created_at | |
 
 ### `audit_log`
 Append-only. Actions: `account.setup`, `auth.login`, `password.change`,
-`org.create`, `org.update`, `org.delete`, `org.bulk_delete`, `import.completed`.
+`password.reset`, `org.create`, `org.update`, `org.delete`, `org.bulk_delete`,
+`import.completed`, `import.submitted`, `import.approved`, `import.rejected`,
+`user.created`, `user.updated`.
 `details` is JSON with changed-field summaries (e.g. `{"changed":["state","phone"]}`)
-— **no account numbers or third-party PII** in details.
+— **no account numbers or third-party PII** in details (password resets log the target
+e-mail, never the password).
 
 ### `rate_limits`
 Fixed window: `key` (e.g. `login:<ip>`), `count`, `window_start` (unix seconds).
@@ -110,3 +121,11 @@ Applied in `worker/src/lib/normalize-org.ts` (shared by importer and CRUD):
    (deleted) record") rather than a constraint crash. Physically purging a soft-deleted
    row (only ever needed to free an S/N) is a manual D1 operation.
 5. Bulk delete ≤ 500 ids per call; missing ids silently ignored; result reports counts.
+6. Import approval: an import row is `pending` until an admin `approve`s (→
+   `completed`, rows applied with matching re-run against the current registry) or
+   `reject`s it (→ `rejected`, nothing applied). Pending rows auto-expire after 7 days.
+   A `pending`/`rejected`/`completed` row cannot be re-approved (409); the apply step is
+   idempotent per import id.
+7. Roles: `admin` and `editor`. Import execute/approve/reject and all `/api/users`
+   routes are admin-only (403 for editors). A user cannot disable or demote
+   themselves; the last active admin cannot be disabled or demoted.

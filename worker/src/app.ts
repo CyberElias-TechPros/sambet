@@ -8,6 +8,7 @@ import { authRoutes, corsHeaders } from './routes/auth';
 import { orgRoutes } from './routes/organizations';
 import { statsRoutes } from './routes/stats';
 import { importRoutes } from './routes/imports';
+import { userRoutes } from './routes/users';
 import { ensureSchema } from './schema';
 import type { AppEnv } from './types';
 
@@ -60,6 +61,8 @@ app.use('/api/stats', requireAuth);
 app.use('/api/stats/*', requireAuth);
 app.use('/api/imports', requireAuth);
 app.use('/api/imports/*', requireAuth);
+app.use('/api/users', requireAuth);
+app.use('/api/users/*', requireAuth);
 
 // Extra throttle for import previews (file parsing is comparatively heavy).
 app.use('/api/imports/preview', async (c, next) => {
@@ -75,6 +78,7 @@ app.use('/api/imports/preview', async (c, next) => {
 app.route('/api/organizations', orgRoutes);
 app.route('/api/stats', statsRoutes);
 app.route('/api/imports', importRoutes);
+app.route('/api/users', userRoutes);
 
 /* ------------------------- 404 + errors ------------------------- */
 app.notFound((c) => c.json({ error: 'Not found' }, 404));

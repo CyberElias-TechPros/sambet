@@ -9,6 +9,7 @@ import type {
   OrgInput,
   PageMeta,
   Stats,
+  TeamMember,
   User,
 } from './types';
 
@@ -94,7 +95,24 @@ export const api = {
   },
   executeImport: (uploadId: string, strategy: 'update' | 'skip') =>
     request<{ data: ImportResult }>('/imports/execute', { method: 'POST', body: JSON.stringify({ uploadId, strategy }) }),
-  listImports: (page = 1) => request<{ data: ImportRecord[]; meta: PageMeta }>(`/imports?page=${page}`),
+  submitImport: (uploadId: string, strategy: 'update' | 'skip') =>
+    request<{ data: { importId: number; status: 'pending' } }>('/imports/submit', { method: 'POST', body: JSON.stringify({ uploadId, strategy }) }),
+  approveImport: (id: number, strategy: 'update' | 'skip') =>
+    request<{ data: ImportResult }>(`/imports/${id}/approve`, { method: 'POST', body: JSON.stringify({ strategy }) }),
+  rejectImport: (id: number, reason: string) =>
+    request<{ data: { importId: number; status: 'rejected' } }>(`/imports/${id}/reject`, { method: 'POST', body: JSON.stringify({ reason }) }),
+  listImports: (page = 1, pageSize = 10, status?: string) =>
+    request<{ data: ImportRecord[]; meta: PageMeta }>(`/imports?page=${page}&pageSize=${pageSize}${status ? `&status=${status}` : ''}`),
+  importFileUrl: (id: number) => `/api/imports/${id}/file`,
+
+  // team (admin only)
+  listUsers: () => request<{ data: TeamMember[] }>('/users'),
+  createUser: (body: { name: string; email: string; password: string; role: 'admin' | 'editor' }) =>
+    request<{ data: TeamMember }>('/users', { method: 'POST', body: JSON.stringify(body) }),
+  updateUser: (id: number, body: { role?: 'admin' | 'editor'; disabled?: boolean }) =>
+    request<{ ok: boolean }>(`/users/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  resetUserPassword: (id: number) =>
+    request<{ data: { email: string; tempPassword: string } }>(`/users/${id}/reset-password`, { method: 'POST' }),
 
   // stats + audit
   stats: () => request<Stats>('/stats'),

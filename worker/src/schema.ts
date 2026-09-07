@@ -19,7 +19,8 @@ export const SCHEMA_STATEMENTS: string[] = [
     password_hash TEXT NOT NULL,
     role          TEXT NOT NULL DEFAULT 'admin',
     created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-    last_login_at TEXT
+    last_login_at TEXT,
+    disabled_at   TEXT
   )`,
   `CREATE TABLE IF NOT EXISTS sessions (
     token_hash    TEXT PRIMARY KEY,
@@ -76,8 +77,13 @@ export const SCHEMA_STATEMENTS: string[] = [
     status          TEXT NOT NULL DEFAULT 'completed',
     report          TEXT,
     actor_email     TEXT,
+    payload_key     TEXT,
+    reviewed_by     TEXT,
+    reviewed_at     TEXT,
+    rejection_reason TEXT,
     created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
   )`,
+  `CREATE INDEX IF NOT EXISTS idx_imports_status ON imports(status)`,
   `CREATE TABLE IF NOT EXISTS audit_log (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     actor_email TEXT,
@@ -97,6 +103,22 @@ export const SCHEMA_STATEMENTS: string[] = [
   )`,
 ];
 
+/** (table, column, type) additions from migration 0002, for databases
+ *  created before the import-approval feature existed. */
+const COLUMN_UPGRADES: [string, string, string][] = [
+  ['users', 'disabled_at', 'TEXT'],
+  ['imports', 'payload_key', 'TEXT'],
+  ['imports', 'reviewed_by', 'TEXT'],
+  ['imports', 'reviewed_at', 'TEXT'],
+  ['imports', 'rejection_reason', 'TEXT'],
+];
+
+async function ensureColumn(db: D1Database, table: string, column: string, type: string): Promise<void> {
+  const rows = await db.prepare(`PRAGMA table_info(${table})`).all<{ name: string }>();
+  const has = rows.results.some((r) => r.name === column);
+  if (!has) await db.prepare(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`).run();
+}
+
 let schemaPromise: Promise<void> | null = null;
 
 /** Ensure the schema exists on this database (runs at most once per isolate). */
@@ -107,8 +129,14 @@ export function ensureSchema(db: D1Database): Promise<void> {
       const row = await db.prepare(
         `SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('users','organizations','imports','audit_log','rate_limits','sessions')`,
       ).all<{ name: string }>();
-      if (row.results.length >= 6) return;
-      await db.batch(SCHEMA_STATEMENTS.map((sql) => db.prepare(sql)));
+      if (row.results.length < 6) {
+        await db.batch(SCHEMA_STATEMENTS.map((sql) => db.prepare(sql)));
+        return;
+      }
+      // Tables exist — pick up additive columns from later migrations.
+      for (const [table, column, type] of COLUMN_UPGRADES) {
+        await ensureColumn(db, table, column, type);
+      }
     })().catch((err) => {
       schemaPromise = null; // allow retry on transient failure
       throw err;

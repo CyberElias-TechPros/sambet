@@ -37,9 +37,10 @@ The binding name (`FILES`) and bucket name (`sambet-imports`) already match
 npx wrangler d1 migrations apply sambet-db --remote
 ```
 
-This runs `worker/migrations/0001_init.sql`. (The worker also self-heals the schema on
-its first request, so skipping this step won't break anything — but run it anyway; it's
-the canonical, reviewable path.)
+This runs `worker/migrations/0001_init.sql` then `0002_import_approval.sql` (the
+import-approval columns + roles). (The worker also self-heals the schema on its first
+request, so skipping this step won't break anything — but run it anyway; it's the
+canonical, reviewable path.)
 
 ### 1.4 Deploy the Worker
 
@@ -94,10 +95,15 @@ Push this repo to GitHub (or import it into Vercel directly). The frontend lives
 Open your Vercel URL. There is **no seed account** — the first visitor sees
 *“Set up your admin account”*. Create the admin (name, work e-mail, strong password ≥10
 chars with 3 of {lowercase, uppercase, digit, symbol}). The first-run setup endpoint is
-then permanently closed (409). If a second staff account is ever needed: insert a
-`users` row directly in D1 with a properly hashed password (existing sessions are
-unaffected) — do **not** wipe `users` to re-run setup, since sessions cascade-delete
-with their user and everyone would be logged out.
+then permanently closed (409).
+
+Add staff from the **Team** page (admin only): *Add member* → name, e-mail, role
+(Admin / Staff editor) → a temporary password is generated and shown **once**. The
+member signs in with it and changes it in Settings. Team members can also be
+disabled/re-enabled and have their password reset from the same page (disabling signs
+them out immediately). If you ever need an account out-of-band, insert a `users` row
+directly in D1 with a properly hashed password — do **not** wipe `users` to re-run
+setup, since sessions cascade-delete with their user and everyone would be logged out.
 
 ### 2.4 Migrate the existing registry
 

@@ -83,6 +83,32 @@ export const passwordChangeSchema = z.object({
     .regex(/\d/, 'New password must contain a number'),
 });
 
+/* ------------------------- team (users) ------------------------- */
+
+export const USER_ROLES = ['admin', 'editor'] as const;
+export type UserRole = (typeof USER_ROLES)[number];
+
+const strongPassword = z
+  .string()
+  .min(10, 'Password must be at least 10 characters')
+  .max(200)
+  .refine((v) => {
+    const classes = [/[a-z]/, /[A-Z]/, /\d/, /[^A-Za-z0-9]/].filter((re) => re.test(v)).length;
+    return classes >= 3;
+  }, 'Password needs at least 3 of: lowercase, uppercase, number, symbol');
+
+export const userCreateSchema = z.object({
+  name: z.string().trim().min(2, 'Enter a name').max(120),
+  email: z.string().trim().toLowerCase().min(3).max(160).email('Enter a valid e-mail address'),
+  password: strongPassword,
+  role: z.enum(USER_ROLES),
+});
+
+export const userUpdateSchema = z.object({
+  role: z.enum(USER_ROLES).optional(),
+  disabled: z.boolean().optional(),
+});
+
 /** Flatten a failed zod parse into { field: message } for API errors. */
 export function zodFieldErrors(result: {
   error: { issues: { path: (string | number)[]; message: string }[] };

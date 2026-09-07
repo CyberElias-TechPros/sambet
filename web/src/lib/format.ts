@@ -80,11 +80,17 @@ export function actionLabel(action: string): string {
     'account.setup': 'Account created',
     'auth.login': 'Signed in',
     'password.change': 'Password changed',
+    'password.reset': 'Password reset',
     'org.create': 'Organization added',
     'org.update': 'Organization updated',
     'org.delete': 'Organization deleted',
     'org.bulk_delete': 'Bulk deletion',
     'import.completed': 'Import completed',
+    'import.submitted': 'Import submitted for approval',
+    'import.approved': 'Import approved',
+    'import.rejected': 'Import rejected',
+    'user.created': 'Team member added',
+    'user.updated': 'Team member updated',
   };
   return labels[action] ?? action;
 }

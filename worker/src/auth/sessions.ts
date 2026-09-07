@@ -56,13 +56,18 @@ export async function getSessionUser(env: Bindings, cookieHeader: string | undef
   if (!token) return null;
   const hash = await sha256Hex(token);
   const row = await env.DB.prepare(
-    `SELECT u.id, u.email, u.name, u.role, s.expires_at
+    `SELECT u.id, u.email, u.name, u.role, u.disabled_at, s.expires_at
      FROM sessions s JOIN users u ON u.id = s.user_id
      WHERE s.token_hash = ?`,
   )
     .bind(hash)
-    .first<{ id: number; email: string; name: string; role: string; expires_at: string }>();
+    .first<{ id: number; email: string; name: string; role: string; disabled_at: string | null; expires_at: string }>();
   if (!row) return null;
+  if (row.disabled_at != null) {
+    // Disabled accounts lose access immediately (no waiting for expiry).
+    await env.DB.prepare('DELETE FROM sessions WHERE token_hash = ?').bind(hash).run();
+    return null;
+  }
   if (new Date(row.expires_at).getTime() < Date.now()) {
     await env.DB.prepare('DELETE FROM sessions WHERE token_hash = ?').bind(hash).run();
     return null;

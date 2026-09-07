@@ -141,10 +141,41 @@ export interface ImportRecord {
   updated_count: number;
   skipped_count: number;
   error_count: number;
+  /** pending | completed | rejected | failed */
   status: string;
-  report: unknown;
+  report: ImportReport | null;
   actor_email: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  rejection_reason: string | null;
+  /** true when a pending import is older than the 7-day review window */
+  expired?: boolean;
   created_at: string;
+}
+
+export interface ImportReport {
+  filename?: string;
+  total?: number;
+  create?: number;
+  update?: number;
+  skip?: number;
+  created?: number;
+  updated?: number;
+  skipped?: number;
+  strategy?: string;
+  errors?: { excelRow: number; reason: string }[];
+  warnings?: { excelRow: number; message: string }[];
+  unmappedHeaders?: string[];
+}
+
+export interface TeamMember {
+  id: number;
+  name: string;
+  email: string;
+  role: 'admin' | 'editor';
+  created_at: string;
+  last_login_at: string | null;
+  disabled_at: string | null;
 }
 
 export interface AuditRow {

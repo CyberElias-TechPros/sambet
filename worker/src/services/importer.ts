@@ -337,6 +337,8 @@ export async function planImport(
     uploadedAt: Date.now(),
     headers: parsed.headers,
     unmappedHeaders: parsed.unmappedHeaders,
+    errors: errors.slice(0, 200),
+    warnings: warnings.slice(0, 200),
     items: items.map((it) => ({ excelRow: it.excelRow, matchId: it.matchId, data: it })),
   };
   await env.FILES.put(`uploads/${uploadId}.json`, new TextEncoder().encode(JSON.stringify(payload)));
@@ -358,7 +360,8 @@ export async function planImport(
   };
 }
 
-const UPLOAD_TTL_MS = 60 * 60 * 1000; // 1 hour
+const UPLOAD_TTL_MS = 60 * 60 * 1000; // 1 hour — direct (admin) execute path
+const PENDING_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days — approval queue
 
 export interface ImportResult {
   importId: number;
@@ -368,6 +371,67 @@ export interface ImportResult {
   updated: number;
   skipped: number;
   errors: number;
+}
+
+/** Shared upsert loop: insert unmatched rows, update/skip matched ones. */
+async function applyImportItems(
+  env: Bindings,
+  importId: number,
+  items: { matchId: number | null; data: NormalizedOrg }[],
+  strategy: 'update' | 'skip',
+): Promise<{ created: number; updated: number; skipped: number }> {
+  let created = 0;
+  let updated = 0;
+  let skipped = 0;
+
+  const insertBatch: string[] = [];
+  const updateBatch: D1PreparedStatement[] = [];
+  const flush = async () => {
+    if (insertBatch.length) {
+      const stmts = insertBatch.map((sql) => env.DB.prepare(sql));
+      await env.DB.batch(stmts);
+      insertBatch.length = 0;
+    }
+    if (updateBatch.length) {
+      await env.DB.batch(updateBatch);
+      updateBatch.length = 0;
+    }
+  };
+
+  for (const item of items) {
+    if (item.matchId == null) {
+      insertBatch.push(orgInsertSql(item.data, 'import', importId));
+      created++;
+    } else if (strategy === 'skip') {
+      skipped++;
+    } else {
+      updateBatch.push(
+        env.DB.prepare(
+          `UPDATE organizations SET
+             sn = ?, name = ?, ceo_name = ?, phone = ?, email = ?, bank = ?, bank_norm = ?,
+             account_number = ?, lga = ?, state = ?, state_norm = ?, project_type = ?,
+             project_category = ?, status = ?, notes = ?, cycle = ?,
+             source = 'import', source_import_id = ?,
+             updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+           WHERE id = ?`,
+        ).bind(
+          item.data.sn, item.data.name, item.data.ceo_name, item.data.phone, item.data.email,
+          item.data.bank, item.data.bank_norm, item.data.account_number, item.data.lga,
+          item.data.state, item.data.state_norm, item.data.project_type,
+          item.data.project_category, item.data.status, item.data.notes, item.data.cycle,
+          importId, item.matchId,
+        ),
+      );
+      updated++;
+    }
+    if (insertBatch.length >= 100 || updateBatch.length >= 100) await flush();
+  }
+  await flush();
+  return { created, updated, skipped };
+}
+
+export function isPendingExpired(createdAt: string, now = Date.now()): boolean {
+  return now - Date.parse(createdAt) > PENDING_TTL_MS;
 }
 
 export async function executeImport(
@@ -407,49 +471,7 @@ export async function executeImport(
   let skipped = 0;
 
   try {
-    const insertBatch: string[] = [];
-    const updateBatch: D1PreparedStatement[] = [];
-    const flush = async () => {
-      if (insertBatch.length) {
-        const stmts = insertBatch.map((sql) => env.DB.prepare(sql));
-        await env.DB.batch(stmts);
-        insertBatch.length = 0;
-      }
-      if (updateBatch.length) {
-        await env.DB.batch(updateBatch);
-        updateBatch.length = 0;
-      }
-    };
-
-    for (const item of payload.items) {
-      if (item.matchId == null) {
-        insertBatch.push(orgInsertSql(item.data, 'import', importId));
-        created++;
-      } else if (strategy === 'skip') {
-        skipped++;
-      } else {
-        updateBatch.push(
-          env.DB.prepare(
-            `UPDATE organizations SET
-               sn = ?, name = ?, ceo_name = ?, phone = ?, email = ?, bank = ?, bank_norm = ?,
-               account_number = ?, lga = ?, state = ?, state_norm = ?, project_type = ?,
-               project_category = ?, status = ?, notes = ?, cycle = ?,
-               source = 'import', source_import_id = ?,
-               updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
-             WHERE id = ?`,
-          ).bind(
-            item.data.sn, item.data.name, item.data.ceo_name, item.data.phone, item.data.email,
-            item.data.bank, item.data.bank_norm, item.data.account_number, item.data.lga,
-            item.data.state, item.data.state_norm, item.data.project_type,
-            item.data.project_category, item.data.status, item.data.notes, item.data.cycle,
-            importId, item.matchId,
-          ),
-        );
-        updated++;
-      }
-      if (insertBatch.length >= 100 || updateBatch.length >= 100) await flush();
-    }
-    await flush();
+    ({ created, updated, skipped } = await applyImportItems(env, importId, payload.items, strategy));
   } catch (err) {
     await markFailed();
     throw err;
@@ -477,4 +499,189 @@ export async function executeImport(
     .run();
 
   return { importId, filename: payload.filename, total, created, updated, skipped, errors: 0 };
+}
+
+/* ------------------------------------------------------------------ */
+/* Approval queue (editor submits → admin approves/rejects)            */
+/* ------------------------------------------------------------------ */
+
+function safeFilename(name: string): string {
+  return name.replace(/[^\w.\-]+/g, '_').slice(0, 120) || 'upload';
+}
+
+interface StoredPayload {
+  filename: string;
+  strategy: 'update' | 'skip';
+  uploadedAt: number;
+  headers: string[];
+  unmappedHeaders: string[];
+  errors: { excelRow: number; reason: string }[];
+  warnings: { excelRow: number; message: string }[];
+  items: { excelRow: number; matchId: number | null; data: NormalizedOrg }[];
+}
+
+/**
+ * Convert a finished preview into a pending import. The payload + original
+ * file move from the 1-hour `uploads/` area into the permanent
+ * `imports/<id>/` area, and a `pending` row is created. No organization data
+ * is touched.
+ */
+export async function submitImport(
+  env: Bindings,
+  uploadId: string,
+  strategy: 'update' | 'skip',
+  actorEmail: string | null,
+): Promise<{ importId: number; status: 'pending' }> {
+  const obj = await env.FILES.get(`uploads/${uploadId}.json`);
+  if (!obj) throw Object.assign(new Error('Preview expired. Please upload the file again.'), { status: 410 });
+  const payload = (await obj.json()) as StoredPayload;
+
+  const ins = await env.DB.prepare(
+    `INSERT INTO imports (filename, status, actor_email, total_rows) VALUES (?, 'pending', ?, ?)`,
+  )
+    .bind(payload.filename, actorEmail, payload.items.length)
+    .run();
+  const importId = Number(ins.meta.last_row_id ?? 0);
+
+  const payloadKey = `imports/${importId}/payload.json`;
+  const fileKey = `imports/${importId}/${safeFilename(payload.filename)}`;
+  await env.FILES.put(payloadKey, new TextEncoder().encode(JSON.stringify(payload)));
+  const fileObj = await env.FILES.get(`uploads/${uploadId}.file`);
+  if (fileObj) {
+    const bytes = await fileObj.arrayBuffer();
+    await env.FILES.put(fileKey, new Uint8Array(bytes));
+  }
+  await env.FILES.delete(`uploads/${uploadId}.json`);
+  await env.FILES.delete(`uploads/${uploadId}.file`);
+
+  const total = payload.items.length;
+  const create = payload.items.filter((i) => i.matchId == null).length;
+  const update = payload.items.filter((i) => i.matchId != null && strategy === 'update').length;
+  const skip = payload.items.filter((i) => i.matchId != null && strategy === 'skip').length;
+  const report = {
+    filename: payload.filename,
+    total,
+    create,
+    update,
+    skip,
+    strategy,
+    errors: payload.errors,
+    warnings: payload.warnings,
+    unmappedHeaders: payload.unmappedHeaders,
+  };
+  await env.DB.prepare(
+    `UPDATE imports SET payload_key = ?, r2_key = ?, report = ? WHERE id = ?`,
+  )
+    .bind(payloadKey, fileKey, JSON.stringify(report), importId)
+    .run();
+
+  return { importId, status: 'pending' };
+}
+
+/**
+ * Admin approves a pending import: the parsed rows are re-matched against the
+ * current registry (records may have changed since submission), then applied
+ * with the strategy chosen at approval time.
+ */
+export async function approveImport(
+  env: Bindings,
+  importId: number,
+  strategy: 'update' | 'skip',
+  reviewerEmail: string | null,
+): Promise<ImportResult> {
+  const row = await env.DB.prepare('SELECT * FROM imports WHERE id = ?')
+    .bind(importId)
+    .first<{ id: number; status: string; payload_key: string | null; filename: string; created_at: string }>();
+  if (!row) throw Object.assign(new Error('Import not found'), { status: 404 });
+  if (row.status === 'completed') throw Object.assign(new Error('This import was already applied.'), { status: 409 });
+  if (row.status === 'rejected') throw Object.assign(new Error('This import was rejected.'), { status: 409 });
+  if (row.status !== 'pending') throw Object.assign(new Error('Import is not awaiting review.'), { status: 409 });
+  if (!row.payload_key) throw Object.assign(new Error('Import payload is missing.'), { status: 410 });
+  if (isPendingExpired(row.created_at)) {
+    await env.DB.prepare(
+      `UPDATE imports SET status = 'rejected', rejection_reason = 'Expired — not reviewed within 7 days',
+         reviewed_by = ?, reviewed_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`,
+    ).bind(reviewerEmail, importId).run();
+    throw Object.assign(new Error('This submission expired (not reviewed within 7 days). Please upload again.'), { status: 410 });
+  }
+
+  const obj = await env.FILES.get(row.payload_key);
+  if (!obj) throw Object.assign(new Error('Import payload is missing.'), { status: 410 });
+  const payload = (await obj.json()) as StoredPayload;
+
+  // Re-match against the CURRENT registry: rows may have been added, edited
+  // or (soft) deleted between submission and approval. Normalized values are
+  // idempotent under normalizeOrg, so normalized items can be re-matched.
+  const index = await buildIndex(env);
+  const items = payload.items.map((it) => ({
+    matchId: matchRow(it.data as unknown as ParsedRowData, index),
+    data: it.data,
+  }));
+
+  const markFailed = async () => {
+    try {
+      await env.DB.prepare(`UPDATE imports SET status = 'failed' WHERE id = ?`).bind(importId).run();
+    } catch {
+      /* best effort */
+    }
+  };
+
+  let created = 0;
+  let updated = 0;
+  let skipped = 0;
+  try {
+    ({ created, updated, skipped } = await applyImportItems(env, importId, items, strategy));
+  } catch (err) {
+    await markFailed();
+    throw err;
+  }
+
+  const total = payload.items.length;
+  const report = {
+    ...(payload.errors || payload.warnings || payload.unmappedHeaders
+      ? { errors: payload.errors, warnings: payload.warnings, unmappedHeaders: payload.unmappedHeaders }
+      : {}),
+    filename: payload.filename,
+    total,
+    created,
+    updated,
+    skipped,
+    strategy,
+    approvedBy: reviewerEmail,
+  };
+  await env.DB.prepare(
+    `UPDATE imports SET total_rows = ?, created_count = ?, updated_count = ?, skipped_count = ?,
+       error_count = 0, status = 'completed', reviewed_by = ?, reviewed_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
+       report = ?
+     WHERE id = ?`,
+  )
+    .bind(total, created, updated, skipped, reviewerEmail, JSON.stringify(report), importId)
+    .run();
+  await env.FILES.delete(row.payload_key);
+
+  return { importId, filename: payload.filename, total, created, updated, skipped, errors: 0 };
+}
+
+export async function rejectImport(
+  env: Bindings,
+  importId: number,
+  reason: string | null,
+  reviewerEmail: string | null,
+): Promise<{ importId: number; status: 'rejected' }> {
+  const row = await env.DB.prepare('SELECT id, status FROM imports WHERE id = ?')
+    .bind(importId)
+    .first<{ id: number; status: string }>();
+  if (!row) throw Object.assign(new Error('Import not found'), { status: 404 });
+  if (row.status !== 'pending') throw Object.assign(new Error('Only pending imports can be rejected.'), { status: 409 });
+  await env.DB.prepare(
+    `UPDATE imports SET status = 'rejected', rejection_reason = ?, reviewed_by = ?,
+       reviewed_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`,
+  )
+    .bind(reason, reviewerEmail, importId)
+    .run();
+  const payloadKey = await env.DB.prepare('SELECT payload_key FROM imports WHERE id = ?')
+    .bind(importId)
+    .first<{ payload_key: string | null }>();
+  if (payloadKey?.payload_key) await env.FILES.delete(payloadKey.payload_key).catch(() => {});
+  return { importId, status: 'rejected' };
 }

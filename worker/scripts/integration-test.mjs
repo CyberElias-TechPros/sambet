@@ -32,15 +32,16 @@ function check(name, cond, extra = '') {
   }
 }
 
-let cookie = '';
+let cookie = ''; // the "primary" (admin) session
 
-async function req(method, path, { body, headers = {} } = {}) {
+async function req(method, path, { body, headers = {}, cookie: cookieOverride } = {}) {
   const isForm = typeof FormData !== 'undefined' && body instanceof FormData;
+  const useCookie = cookieOverride === undefined ? cookie : cookieOverride;
   const res = await fetch(BASE + path, {
     method,
     headers: {
       ...(body && !isForm ? { 'content-type': 'application/json' } : {}),
-      ...(cookie ? { cookie } : {}),
+      ...(useCookie ? { cookie: useCookie } : {}),
       ...headers,
     },
     body: body === undefined ? undefined : isForm ? body : JSON.stringify(body),
@@ -54,7 +55,9 @@ async function req(method, path, { body, headers = {} } = {}) {
     data = { _raw: text.slice(0, 300) };
   }
   const setCookie = res.headers.get('set-cookie');
-  if (setCookie) cookie = setCookie.split(';')[0];
+  // Only capture the session for the primary user (pass `cookie: ''` to act as a
+  // different user without clobbering the admin cookie).
+  if (setCookie && cookieOverride === undefined) cookie = setCookie.split(';')[0];
   return { status: res.status, data, text, headers: res.headers };
 }
 
@@ -85,7 +88,7 @@ async function waitForHealth(timeoutMs = 90000) {
 async function main() {
   console.log('— Sambet API integration test —\n');
 
-  console.log('[1/9] Clean local state, start wrangler dev…');
+  console.log('[1/10] Clean local state, start wrangler dev…');
   const stateDir = '.wrangler/state';
   if (existsSync(stateDir)) rmSync(stateDir, { recursive: true, force: true });
 
@@ -140,7 +143,7 @@ async function main() {
   console.log('  worker up\n');
 
   try {
-    console.log('[2/9] Fresh DB: status + auth guard');
+    console.log('[2/10] Fresh DB: status + auth guard');
     let r = await req('GET', '/api/auth/status');
     check('health ok', (await req('GET', '/api/health')).data.ok === true);
     check('not initialized', r.status === 200 && r.data.initialized === false);
@@ -149,7 +152,7 @@ async function main() {
     r = await req('GET', '/api/stats');
     check('unauthenticated stats → 401', r.status === 401);
 
-    console.log('\n[3/9] First-run setup');
+    console.log('\n[3/10] First-run setup');
     r = await req('POST', '/api/auth/setup', { body: { name: 'A B', email: 'a@b.co', password: 'short' } });
     check('weak password rejected (400)', r.status === 400);
     r = await req('POST', '/api/auth/setup', { body: { name: 'A B', email: 'a@b.co', password: 'abcdefgh' } });
@@ -164,8 +167,9 @@ async function main() {
     check('now initialized', r.data.initialized === true);
     r = await req('POST', '/api/auth/setup', { body: ADMIN });
     check('second setup → 409', r.status === 409);
+    const adminId = (await req('GET', '/api/auth/me')).data?.user?.id;
 
-    console.log('\n[4/9] Migrate the real legacy workbook through the import API');
+    console.log('\n[4/10] Migrate the real legacy workbook through the import API');
     // The schema self-bootstraps on first request (already exercised above).
     // Seeding goes through the production import pipeline with the actual
     // 2000-row file — if this works, the user's real migration works.
@@ -197,7 +201,7 @@ async function main() {
     const incTotal = (await req('GET', '/api/organizations?incomplete=1&pageSize=1')).data?.meta?.total ?? 0;
     check('incomplete filter finds partial rows', incTotal > 100, `incomplete=${incTotal}`);
 
-    console.log('\n[5/9] Stats + audit');
+    console.log('\n[5/10] Stats + audit');
     r = await req('GET', '/api/stats');
     check('stats.total = 1669', r.data?.total === 1669, `got ${r.data?.total}`);
     check('stats.statesCovered between 25 and 37', r.data?.statesCovered >= 25 && r.data?.statesCovered <= 37, `got ${r.data?.statesCovered}`);
@@ -206,7 +210,7 @@ async function main() {
     check('stats.duplicates > 40', (r.data?.duplicates ?? 0) > 40, `got ${r.data?.duplicates}`);
     check('stats.recent has rows', r.data?.recent?.length === 6);
 
-    console.log('\n[6/9] CRUD + validation');
+    console.log('\n[6/10] CRUD + validation');
     r = await req('POST', '/api/organizations', {
       body: { name: '  IT Test Org  ', ceo_name: 'Jane Doe', phone: 'O8031112222', email: 'JANE@IT.CO', state: 'RIVRES STATE', bank: 'U B A', account_number: ',0123456789', lga: 'Mushin', project_type: 'Road and Borehole', sn: 9001 },
     });
@@ -254,7 +258,7 @@ async function main() {
     r = await req('POST', '/api/organizations/bulk-delete', { body: { ids: [bulk1, bulk2, 999999] } });
     check('bulk delete removes 2', r.status === 200 && r.data?.deleted === 2, JSON.stringify(r.data));
 
-    console.log('\n[7/9] Import: preview → execute → idempotent re-run');
+    console.log('\n[7/10] Import: preview → execute → idempotent re-run');
     const ws = XLSX.utils.aoa_to_sheet([
       ['S/N', 'NAME OF ORGANIZATION', 'NAME OF CEO', 'PHONE NUMBER', 'BANK', 'ACCOUNT NUMBER', 'EMAIL', 'LOCAL GOVERNMENT', 'STATE', 'PROJECT TYPE'],
       [1, 'AYMAN T MPCSL', 'SHEIKH MUHAMMAD TEQQIYYUAH', '08039189574', 'ZENITH BANK', '1312841464', 'aymantmpcsl@gmail.com', 'AKOKO NORTHEASTH LG', 'ONDO STATE', "ELECTRICITY'S"],
@@ -301,7 +305,7 @@ async function main() {
     });
     check('unsupported file type → 400', r.status === 400);
 
-    console.log('\n[8/9] Export + template + audit');
+    console.log('\n[8/10] Export + template + audit');
     const csv = await reqBin('/api/organizations/export?format=csv&search=AYMAN%20T%20MPCSL');
     check('csv export 200', csv.status === 200);
     const csvText = new TextDecoder().decode(csv.buf);
@@ -331,8 +335,118 @@ async function main() {
     r = await req('GET', '/api/imports?pageSize=5');
     check('import history has 3 completed', r.data?.data?.filter((i) => i.status === 'completed').length === 3, JSON.stringify(r.data?.data?.map((i) => i.status)));
 
-    console.log('\n[9/9] Login/logout + rate limiting (run last — burns the 5/min budget)');
-    // current cookie is from setup; log out and log back in
+    console.log('\n[9/10] Team roles + import approval');
+    // — team management (admin only)
+    r = await req('POST', '/api/users', { body: { name: 'Field Officer', email: 'editor@sambet.test', password: 'Editor@12345', role: 'editor' } });
+    check('admin creates editor account (201)', r.status === 201, JSON.stringify(r.data).slice(0, 150));
+    const editorId = r.data?.data?.id;
+    r = await req('POST', '/api/users', { body: { name: 'Dup Officer', email: 'editor@sambet.test', password: 'Editor@12345', role: 'editor' } });
+    check('duplicate e-mail rejected (409)', r.status === 409);
+    r = await req('POST', '/api/users', { body: { name: 'Weak', email: 'w@sambet.test', password: 'short', role: 'editor' } });
+    check('weak temp password rejected (400)', r.status === 400);
+    r = await req('GET', '/api/users');
+    check('user list shows 2 members', r.status === 200 && r.data?.data?.length === 2, `got ${r.data?.data?.length}`);
+
+    // — editor signs in (as a separate session)
+    r = await req('POST', '/api/auth/login', { body: { email: 'editor@sambet.test', password: 'Editor@12345' }, cookie: '' });
+    const editorCookie = r.headers.get('set-cookie')?.split(';')[0] ?? '';
+    check('editor signs in (200)', r.status === 200, `got ${r.status}`);
+    check('login reports the real role (editor, not hardcoded admin)', r.data?.user?.role === 'editor', JSON.stringify(r.data?.user));
+
+    // — permission boundaries
+    r = await req('GET', '/api/users', { cookie: editorCookie });
+    check('editor cannot list users (403)', r.status === 403);
+    r = await req('POST', '/api/organizations', { body: { name: 'Editor Created Org', state: 'Oyo' }, cookie: editorCookie });
+    check('editor can add records (201)', r.status === 201, JSON.stringify(r.data).slice(0, 120));
+    const editorOrgId = r.data?.data?.id;
+    r = await req('DELETE', `/api/organizations/${editorOrgId}`, { cookie: editorCookie });
+    check('editor can (soft) delete records (200)', r.status === 200);
+
+    // — editor import: preview → execute blocked → submit → pending
+    const makeXlsx = (rows) => {
+      const ws = XLSX.utils.aoa_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+      return new Uint8Array(XLSX.write(wb, { bookType: 'xlsx', type: 'array' }));
+    };
+    const formOf = (bytes, name) => {
+      const fd = new FormData();
+      fd.append('file', new File([bytes], name));
+      fd.append('strategy', 'update');
+      return fd;
+    };
+    const totalOf = async (ck) => (await req('GET', '/api/organizations?pageSize=1', { cookie: ck })).data?.meta?.total;
+    const totalBefore = await totalOf(editorCookie);
+
+    r = await req('POST', '/api/imports/preview', { body: formOf(makeXlsx([['S/N', 'NAME OF ORGANIZATION', 'STATE'], [9200, 'PENDING ORG A', 'Ondo'], [9201, 'PENDING ORG B', 'Ondo']]), 'pending-a.xlsx'), cookie: editorCookie });
+    check('editor preview ok (2 to add)', r.status === 200 && r.data?.data?.create === 2, JSON.stringify(r.data).slice(0, 150));
+    const pendingUpload = r.data?.data?.uploadId;
+    r = await req('POST', '/api/imports/execute', { body: { uploadId: pendingUpload, strategy: 'update' }, cookie: editorCookie });
+    check('editor cannot execute imports directly (403)', r.status === 403);
+    r = await req('POST', '/api/imports/submit', { body: { uploadId: pendingUpload, strategy: 'update' }, cookie: editorCookie });
+    check('editor submits for approval (201, pending)', r.status === 201 && r.data?.data?.status === 'pending', JSON.stringify(r.data).slice(0, 150));
+    const pendingId = r.data?.data?.importId;
+    check('submission changes no records', (await totalOf(editorCookie)) === totalBefore, `before=${totalBefore} after=${await totalOf(editorCookie)}`);
+
+    r = await req('GET', '/api/imports');
+    const pendingRec = r.data?.data?.find((i) => i.id === pendingId);
+    check('history shows pending import', pendingRec?.status === 'pending' && !pendingRec.expired);
+
+    // — second submission (to be rejected later)
+    r = await req('POST', '/api/imports/preview', { body: formOf(makeXlsx([['S/N', 'NAME OF ORGANIZATION', 'STATE'], [9202, 'PENDING ORG C', 'Ondo']]), 'pending-c.xlsx'), cookie: editorCookie });
+    const rejectUpload = r.data?.data?.uploadId;
+    r = await req('POST', '/api/imports/submit', { body: { uploadId: rejectUpload, strategy: 'update' }, cookie: editorCookie });
+    const rejectId = r.data?.data?.importId;
+    check('second submission queued', r.status === 201 && !!rejectId);
+
+    // — admin review: download, approve, re-approve guard
+    const fileRes = await fetch(`${BASE}/api/imports/${pendingId}/file`, { headers: { cookie } });
+    check('admin downloads the pending file (200, xlsx bytes)', fileRes.status === 200 && (await fileRes.arrayBuffer()).byteLength > 100);
+    r = await req('POST', `/api/imports/${pendingId}/approve`, { body: { strategy: 'update' } });
+    check('admin approves the pending import (201, 2 created)', r.status === 201 && r.data?.data?.created === 2, JSON.stringify(r.data).slice(0, 150));
+    check('approval applied the rows (total +2)', (await totalOf()) === totalBefore + 2, `before=${totalBefore} after=${await totalOf()}`);
+    r = await req('GET', '/api/organizations?search=PENDING%20ORG%20A&pageSize=5');
+    check('approved rows are queryable', r.data?.data?.some((o) => o.sn === 9200));
+    r = await req('POST', `/api/imports/${pendingId}/approve`, { body: { strategy: 'update' } });
+    check('re-approving a completed import → 409', r.status === 409);
+
+    // — reject path
+    r = await req('POST', `/api/imports/${rejectId}/approve`, { body: { strategy: 'update' }, cookie: editorCookie });
+    check('editor cannot approve (403)', r.status === 403);
+    r = await req('POST', `/api/imports/${rejectId}/reject`, { body: { reason: 'Wrong project cycle' } });
+    check('admin rejects the pending import', r.status === 200 && r.data?.data?.status === 'rejected');
+    check('rejection changes no records', (await totalOf()) === totalBefore + 2, `got ${await totalOf()}`);
+    r = await req('GET', '/api/imports');
+    const rejectedRec = r.data?.data?.find((i) => i.id === rejectId);
+    check('rejection reason recorded', rejectedRec?.status === 'rejected' && rejectedRec?.rejection_reason === 'Wrong project cycle');
+
+    // — audit trail for the approval flow
+    r = await req('GET', '/api/stats/audit?action=import.approved');
+    check('audit logs the approval', r.data?.data?.some((a) => a.entity_id === String(pendingId)));
+    r = await req('GET', '/api/stats/audit?action=import.rejected');
+    check('audit logs the rejection', r.data?.data?.some((a) => a.entity_id === String(rejectId)));
+    r = await req('GET', '/api/stats/audit?action=import.submitted');
+    check('audit logs the submissions', (r.data?.data?.length ?? 0) >= 2);
+
+    // — disable/enable + self-protection
+    r = await req('PATCH', `/api/users/${adminId}`, { body: { disabled: true } });
+    check('admin cannot disable self (400)', r.status === 400);
+    r = await req('PATCH', `/api/users/${editorId}`, { body: { disabled: true } });
+    check('admin disables the editor (200)', r.status === 200, JSON.stringify(r.data).slice(0, 120));
+    r = await req('GET', '/api/organizations?pageSize=1', { cookie: editorCookie });
+    check('disabled editor session invalidated immediately (401)', r.status === 401, `got ${r.status}`);
+    r = await req('POST', '/api/auth/login', { body: { email: 'editor@sambet.test', password: 'Editor@12345' }, cookie: '' });
+    check('disabled editor cannot sign in (403)', r.status === 403, `got ${r.status}`);
+    r = await req('PATCH', `/api/users/${editorId}`, { body: { disabled: false } });
+    check('admin re-enables the editor (200)', r.status === 200);
+    // NOTE: no re-login here — the login window budget (5/min/IP, shared across
+    // users in local mode) must still have room for the rate-limit section below.
+
+    console.log('\n[10/10] Login/logout + rate limiting (run last — burns the 5/min budget)');
+    // Login budget: 5/min per IP, shared across users (single IP in local mode).
+    // Earlier in this run exactly 2 logins happened (editor sign-in + the
+    // disabled-editor attempt), so: wrong(3), unknown(4), good(5), then the
+    // 6th must be throttled.
     r = await req('POST', '/api/auth/login', { body: { email: ADMIN.email, password: 'WrongPass1' } });
     check('wrong password → 401', r.status === 401);
     r = await req('POST', '/api/auth/logout');
@@ -343,12 +457,8 @@ async function main() {
     check('unknown user → 401 (same shape)', r.status === 401);
     r = await req('POST', '/api/auth/login', { body: { email: ADMIN.email, password: ADMIN.password } });
     check('login ok (200)', r.status === 200);
-    // Login budget is 5/min. Used so far in this section: wrong(1) unknown(2)
-    // good(3). Two more wrong → (5), next → 429.
-    await req('POST', '/api/auth/login', { body: { email: ADMIN.email, password: 'WrongPass2' } });
-    await req('POST', '/api/auth/login', { body: { email: ADMIN.email, password: 'WrongPass3' } });
-    const rl = await req('POST', '/api/auth/login', { body: { email: ADMIN.email, password: 'WrongPass4' } });
-    check('6th attempt in a minute → 429', rl.status === 429, `got ${rl.status}`);
+    const rlHit = await req('POST', '/api/auth/login', { body: { email: ADMIN.email, password: 'WrongPass2' } });
+    check('6th attempt in a minute → 429', rlHit.status === 429, `got ${rlHit.status}`);
   } finally {
     try {
       if (worker.pid) process.kill(-worker.pid, 'SIGKILL');

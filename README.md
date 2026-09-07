@@ -17,7 +17,7 @@ see duplicates and missing fields at a glance, and keep a full audit trail.
 sambet/
 ├── web/                 # Next.js frontend (deploy to Vercel)
 │   └── src/
-│       ├── app/         # /login, /dashboard, /organizations, /import, /audit, /settings
+│       ├── app/         # /login, /dashboard, /organizations, /import, /team, /audit, /settings
 │       ├── components/  # design system (ui/), charts/, layout/, orgs/
 │       ├── hooks/       # use-auth, use-toast
 │       └── lib/         # api client, types, formatting, constants
@@ -28,7 +28,7 @@ sambet/
 │   │   ├── lib/         # normalization (states/banks/categories/phones), validation
 │   │   ├── auth/        # PBKDF2 passwords, sessions, rate limiting
 │   │   └── schema.ts    # self-healing D1 schema
-│   ├── migrations/      # canonical DDL (0001_init.sql)
+│   ├── migrations/      # canonical DDL (0001_init.sql, 0002_import_approval.sql)
 │   └── scripts/         # integration test (real workerd + the real xlsx)
 ├── docs/                # ARCHITECTURE, DATA_MODEL, DEPLOYMENT, adr/
 └── SAMBET GRASSROOT PROJECT 1.xlsx   # the legacy registry (migration source)
@@ -42,9 +42,14 @@ sambet/
 - **Add / edit / delete** — client + server validation, field-level errors, soft deletes
   (nothing is ever physically destroyed), bulk delete.
 - **Bulk import (xlsx/csv)** — two-phase: *preview* (row-by-row validation report,
-  duplicate matches, unmapped-column warnings) then *execute* (update or skip strategy),
-  with import history and the original file archived to R2. A downloadable template keeps
+  duplicate matches, unmapped-column warnings) then apply. Admins apply directly;
+  **staff submit for approval** and an admin reviews the full report + file and
+  approves or rejects (with a reason) before anything is written. Import history,
+  7-day expiry, and the original file archived to R2. A downloadable template keeps
   future cycles consistent.
+- **Team & roles** — admin (full control, approves imports) vs. staff editor (maintains
+  records, submits imports for review). In-app member management: add with a one-time
+  temp password, change role, disable/re-enable (instant sign-out), reset password.
 - **Bulk export (xlsx/csv)** — honors the active filters; standardized columns included.
 - **Dashboard** — totals, state & category charts, status breakdown, most-missing fields,
   recently updated records, recent imports.
@@ -96,4 +101,4 @@ setup flow is the onboarding.
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — components, request flows, security & performance notes
 - **[docs/DATA_MODEL.md](docs/DATA_MODEL.md)** — tables, normalization rules, invariants
 - **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** — Vercel + Cloudflare deploy, backups, rollback
-- **[docs/adr/](docs/adr/)** — key decisions (Workers+D1+R2-only; two-phase import)
+- **[docs/adr/](docs/adr/)** — key decisions (Workers+D1+R2-only; two-phase import; role-based import approval)
