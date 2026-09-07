@@ -58,7 +58,19 @@ function BrandPanel() {
         </ul>
       </div>
 
-      <p className="relative text-xs text-leaf-100/40">SAMBET Grassroot Project · UAAG VIP Members registry</p>
+      <div className="relative">
+        <div className="flex flex-wrap gap-2">
+          {['2,000+ organizations', '37 states covered', 'Full audit trail'].map((c) => (
+            <span
+              key={c}
+              className="rounded-full bg-white/5 px-3 py-1.5 text-[12px] font-medium text-leaf-100/70 ring-1 ring-inset ring-white/10"
+            >
+              {c}
+            </span>
+          ))}
+        </div>
+        <p className="mt-4 text-xs text-leaf-100/40">SAMBET Grassroot Project · UAAG VIP Members registry</p>
+      </div>
     </div>
   );
 }
@@ -139,14 +151,15 @@ export default function LoginPage() {
             </div>
           </div>
 
-          <h2 className="font-display text-[28px] font-semibold tracking-tight text-ink">
-            {isSetup ? 'Create the admin account' : 'Welcome back'}
-          </h2>
-          <p className="mt-1.5 text-sm leading-relaxed text-ink-soft">
-            {isSetup
-              ? 'This system has not been set up yet. The first account becomes the administrator.'
-              : 'Sign in to manage the member registry.'}
-          </p>
+          <div className="rounded-3xl border border-stone-200/80 bg-white p-6 shadow-card sm:p-8">
+            <h2 className="font-display text-[28px] font-semibold tracking-tight text-ink">
+              {isSetup ? 'Create the admin account' : 'Welcome back'}
+            </h2>
+            <p className="mt-1.5 text-sm leading-relaxed text-ink-soft">
+              {isSetup
+                ? 'This system has not been set up yet. The first account becomes the administrator.'
+                : 'Sign in to manage the member registry.'}
+            </p>
 
           {initialized !== false && (
             <div className="mt-4 inline-flex rounded-lg bg-stone-100 p-0.5 ring-1 ring-inset ring-stone-200">
@@ -213,13 +226,14 @@ export default function LoginPage() {
               </div>
             )}
 
-            <Button type="submit" size="lg" loading={busy} className="w-full">
-              {isSetup ? 'Create account' : 'Sign in'}
-              {!busy && <ArrowRight className="h-4 w-4" />}
-            </Button>
-          </form>
+              <Button type="submit" size="lg" loading={busy} className="w-full">
+                {isSetup ? 'Create account' : 'Sign in'}
+                {!busy && <ArrowRight className="h-4 w-4" />}
+              </Button>
+            </form>
+          </div>
 
-          <p className="mt-8 text-center text-xs leading-relaxed text-ink-faint">
+          <p className="mt-6 text-center text-xs leading-relaxed text-ink-faint">
             {isSetup
               ? 'Keep these credentials safe — they control access to the whole registry.'
               : 'Access is restricted to project staff. Activity is logged.'}

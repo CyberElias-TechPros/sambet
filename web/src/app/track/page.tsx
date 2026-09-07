@@ -17,6 +17,49 @@ import { api, ApiError } from '@/lib/api';
 import { formatDateTime } from '@/lib/format';
 import type { PublicStatus } from '@/lib/types';
 
+/** Visual journey for a submission — where it stands in verification. */
+function VerificationTimeline({ status }: { status: PublicStatus['status'] }) {
+  const steps = [
+    { label: 'Submitted', desc: 'Your details and proof of payment were received' },
+    { label: 'Payment verified', desc: 'Our team confirms your transfer' },
+    { label: 'Registered', desc: 'Your organization joins the registry' },
+  ];
+  const stepState = (i: number): 'done' | 'active' | 'failed' | 'todo' => {
+    if (status === 'verified') return 'done';
+    if (status === 'rejected') return i === 0 ? 'done' : i === 1 ? 'failed' : 'todo';
+    return i === 0 ? 'done' : i === 1 ? 'active' : 'todo';
+  };
+  const chips: Record<'done' | 'active' | 'failed' | 'todo', string> = {
+    done: 'bg-leaf-50 text-leaf-600 ring-leaf-200',
+    active: 'bg-amber-50 text-amber-600 ring-amber-200',
+    failed: 'bg-rose-50 text-rose-600 ring-rose-200',
+    todo: 'bg-stone-100 text-stone-400 ring-stone-200',
+  };
+  return (
+    <ol className="mt-7 grid gap-4 border-t border-stone-100 pt-6 sm:grid-cols-3 sm:gap-3">
+      {steps.map((s, i) => {
+        const st = stepState(i);
+        return (
+          <li key={s.label} className="flex items-start gap-3">
+            <span className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full ring-1 ring-inset ${chips[st]}`}>
+              {st === 'done' && <CheckCircle2 className="h-4.5 w-4.5" />}
+              {st === 'active' && <Clock className="h-4.5 w-4.5 animate-pulse" />}
+              {st === 'failed' && <XCircle className="h-4.5 w-4.5" />}
+              {st === 'todo' && <span className="text-[12px] font-bold">{i + 1}</span>}
+            </span>
+            <span>
+              <span className={`block text-[13px] font-semibold ${st === 'todo' ? 'text-ink-faint' : 'text-ink'}`}>
+                {s.label}
+              </span>
+              <span className="mt-0.5 block text-[11.5px] leading-relaxed text-ink-faint">{s.desc}</span>
+            </span>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
 export default function TrackPage() {
   const [reference, setReference] = useState('');
   const [loading, setLoading] = useState(false);
@@ -150,6 +193,7 @@ export default function TrackPage() {
                 </p>
               </>
             )}
+            <VerificationTimeline status={status.status} />
           </div>
         )}
 

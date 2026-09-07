@@ -51,15 +51,24 @@ function usePendingSubmissions() {
   return pending;
 }
 
-function Brand() {
+function Brand({ tone = 'dark', subtitle = 'Grassroots Registry' }: { tone?: 'dark' | 'light'; subtitle?: string }) {
+  const light = tone === 'light';
   return (
-    <Link href="/dashboard" className="flex items-center gap-2.5 px-2">
-      <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-leaf-400 to-leaf-700 shadow-inner ring-1 ring-white/20">
+    <Link href="/dashboard" className="flex items-center gap-2.5">
+      <span
+        className={`flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-leaf-400 to-leaf-700 ${
+          light ? 'shadow-sm ring-1 ring-black/5' : 'shadow-inner ring-1 ring-white/20'
+        }`}
+      >
         <Sprout className="h-5 w-5 text-white" />
       </span>
       <span className="leading-tight">
-        <span className="block font-display text-[17px] font-semibold tracking-tight text-white">Sambet</span>
-        <span className="block text-[10.5px] font-medium uppercase tracking-[0.14em] text-leaf-300/80">Grassroots Registry</span>
+        <span className={`block font-display text-[17px] font-semibold tracking-tight ${light ? 'text-ink' : 'text-white'}`}>
+          Sambet
+        </span>
+        <span className={`block text-[10.5px] font-medium uppercase tracking-[0.14em] ${light ? 'text-ink-faint' : 'text-leaf-300/80'}`}>
+          {subtitle}
+        </span>
       </span>
     </Link>
   );
@@ -84,12 +93,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             key={item.href}
             href={item.href}
             onClick={onNav}
-            className={`group flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13.5px] font-medium transition ${
+            className={`group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13.5px] font-medium transition ${
               active
                 ? 'bg-white/10 text-white shadow-inner ring-1 ring-white/10'
                 : 'text-leaf-100/60 hover:bg-white/5 hover:text-white'
             }`}
           >
+            {active && <span className="absolute -left-3 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-leaf-400" />}
             <item.icon className={`h-[18px] w-[18px] ${active ? 'text-leaf-300' : 'text-leaf-200/40 group-hover:text-leaf-200/80'}`} />
             <span className="flex-1">{item.label}</span>
             {badge != null && (
@@ -146,11 +156,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
         {nav()}
         {userBlock}
+        <p className="px-6 pb-5 text-center text-[10.5px] leading-relaxed text-leaf-100/30">
+          Sambet Grassroots Project · staff console
+        </p>
       </aside>
 
       {/* Mobile header */}
       <header className="sticky top-0 z-40 flex h-14 items-center justify-between border-b border-stone-200 bg-white/90 px-4 backdrop-blur lg:hidden">
-        <Brand />
+        <Brand tone="light" />
         <button
           onClick={() => setMobileOpen(true)}
           className="rounded-lg p-2 text-ink-soft hover:bg-stone-100"

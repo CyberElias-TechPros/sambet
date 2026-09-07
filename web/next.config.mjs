@@ -10,12 +10,19 @@ const config = {
     return [{ source: '/api/:path*', destination: `${dest}/api/:path*` }];
   },
   async headers() {
+    const isProd = process.env.NODE_ENV === 'production';
+    // X-Frame-Options: DENY protects the registry in production, but it also
+    // blocks embedding the app in dev preview environments (which render the
+    // site inside an iframe), so it is only applied to production builds.
+    const frameGuard = isProd
+      ? [{ key: 'X-Frame-Options', value: 'DENY' }]
+      : [];
     return [
       {
         source: '/:all*',
         headers: [
           { key: 'X-Content-Type-Options', value: 'nosniff' },
-          { key: 'X-Frame-Options', value: 'DENY' },
+          ...frameGuard,
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
           {
             key: 'Permissions-Policy',

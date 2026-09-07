@@ -51,7 +51,7 @@ function StatCard({
       </div>
     </>
   );
-  const cls = 'group block rounded-2xl border border-stone-200/80 bg-white p-5 shadow-card transition hover:shadow-pop';
+  const cls = 'group block rounded-2xl border border-stone-200/80 bg-white p-5 shadow-card transition-all hover:-translate-y-0.5 hover:border-leaf-200/70 hover:shadow-card-hover';
   return href ? (
     <Link href={href} className={cls}>
       {inner}
