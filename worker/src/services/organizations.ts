@@ -194,18 +194,22 @@ export async function findDuplicates(env: Bindings, o: OrgRow, limit = 8): Promi
   return rows;
 }
 
-export async function createOrg(env: Bindings, input: OrgInput): Promise<{ org: NormalizedOrg; id: number }> {
+export async function createOrg(
+  env: Bindings,
+  input: OrgInput,
+  source: 'manual' | 'import' | 'public' = 'manual',
+): Promise<{ org: NormalizedOrg; id: number }> {
   const norm = normalizeOrg(input);
   const res = await env.DB.prepare(
     `INSERT INTO organizations
        (sn, name, ceo_name, phone, email, bank, bank_norm, account_number, lga, state,
         state_norm, project_type, project_category, status, notes, cycle, source)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual')`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       norm.sn, norm.name, norm.ceo_name, norm.phone, norm.email, norm.bank, norm.bank_norm,
       norm.account_number, norm.lga, norm.state, norm.state_norm, norm.project_type,
-      norm.project_category, norm.status, norm.notes, norm.cycle,
+      norm.project_category, norm.status, norm.notes, norm.cycle, source,
     )
     .run();
   const id = Number(res.meta.last_row_id ?? 0);

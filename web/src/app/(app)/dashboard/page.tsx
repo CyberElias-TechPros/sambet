@@ -10,12 +10,13 @@ import {
   ArrowUpRight,
   Plus,
   Upload,
+  Banknote,
 } from 'lucide-react';
 import { api } from '@/lib/api';
-import type { Stats } from '@/lib/types';
+import type { Stats, SubmissionStats } from '@/lib/types';
 import { Card, CardHeader, Skeleton } from '@/components/ui/primitives';
-import { HBarChart, DonutChart } from '@/components/charts/charts';
-import { formatNumber, timeAgo, STATUS_LABELS } from '@/lib/format';
+import { HBarChart, DonutChart, TrendBars } from '@/components/charts/charts';
+import { formatNaira, formatNumber, timeAgo, STATUS_LABELS } from '@/lib/format';
 
 function StatCard({
   label,
@@ -63,6 +64,21 @@ function StatCard({
   );
 }
 
+function MiniStat({ label, value, sub, tone }: { label: string; value: string; sub: string; tone: 'leaf' | 'amber' | 'rose' }) {
+  const tones = {
+    leaf: 'text-leaf-800',
+    amber: 'text-amber-700',
+    rose: 'text-rose-700',
+  };
+  return (
+    <div className="rounded-xl bg-white/80 p-4 ring-1 ring-inset ring-stone-200/80">
+      <p className="text-[11.5px] font-medium uppercase tracking-wide text-ink-faint">{label}</p>
+      <p className={`mt-1 text-[22px] font-bold leading-none tracking-tight tabular ${tones[tone]}`}>{value}</p>
+      <p className="mt-1.5 text-[11.5px] text-ink-faint">{sub}</p>
+    </div>
+  );
+}
+
 const MISSING_LABELS: Record<string, string> = {
   ceo: 'Contact person',
   phone: 'Phone',
@@ -76,6 +92,7 @@ const MISSING_LABELS: Record<string, string> = {
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<Stats | null>(null);
+  const [subStats, setSubStats] = useState<SubmissionStats | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -83,6 +100,12 @@ export default function DashboardPage() {
       .stats()
       .then(setStats)
       .catch((e) => setError(e.message));
+    api
+      .submissionStats()
+      .then(setSubStats)
+      .catch(() => {
+        /* submissions band is optional */
+      });
   }, []);
 
   if (error) {
@@ -173,6 +196,52 @@ export default function DashboardPage() {
           href="/organizations?duplicate=1"
         />
       </div>
+
+      {subStats && (
+        <div className="rounded-2xl border border-stone-200/80 bg-gradient-to-br from-leaf-50/70 to-white p-5 shadow-card">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-leaf-700 text-white shadow-sm">
+                <Banknote className="h-4.5 w-4.5" />
+              </span>
+              <div>
+                <p className="text-[13.5px] font-semibold text-ink">Public submissions</p>
+                <p className="text-xs text-ink-faint">
+                  {subStats.counts.today} today · {subStats.counts.week} this week · {subStats.counts.month} this month
+                </p>
+              </div>
+            </div>
+            <Link href="/submissions" className="inline-flex items-center gap-1 text-xs font-medium text-leaf-700 hover:text-leaf-900">
+              Review queue <ArrowUpRight className="h-3.5 w-3.5" />
+            </Link>
+          </div>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <MiniStat label="Pending review" value={formatNumber(subStats.counts.pending)} sub={`${formatNaira(subStats.naira.pending)} to verify`} tone="amber" />
+            <MiniStat label="Verified" value={formatNumber(subStats.counts.verified)} sub={`${formatNaira(subStats.naira.verified)} collected`} tone="leaf" />
+            <MiniStat label="Rejected" value={formatNumber(subStats.counts.rejected)} sub="payment not confirmed" tone="rose" />
+            <MiniStat label="Collected · 30 days" value={formatNaira(subStats.naira.last30d)} sub="fees received (excl. rejected)" tone="leaf" />
+          </div>
+
+          <div className="mt-5 grid gap-5 lg:grid-cols-5">
+            <div className="lg:col-span-3">
+              <p className="mb-2 text-[12px] font-medium text-ink-soft">Submissions · last 14 days</p>
+              <TrendBars
+                data={(subStats.trend ?? []).map((d) => ({
+                  label: d.date.slice(5).replace('-', '/'),
+                  verified: d.verified,
+                  rejected: d.rejected,
+                  pending: d.pending,
+                }))}
+              />
+            </div>
+            <div className="lg:col-span-2">
+              <p className="mb-2 text-[12px] font-medium text-ink-soft">Top submitting states · 6 months</p>
+              <HBarChart data={(subStats.topStates ?? []).map((s) => ({ label: s.state, value: s.count }))} />
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>

@@ -38,3 +38,26 @@ export const STATUS_OPTIONS = [
   { value: 'rejected', label: 'Rejected' },
   { value: 'inactive', label: 'Inactive' },
 ];
+
+/* ------------------------------------------------------------------------ */
+/* Public self-registration: the fee the public pays by bank transfer, and   */
+/* the account they pay into.                                                */
+/* ------------------------------------------------------------------------ */
+
+export const FEE_OPTIONS = [
+  { value: 1000, label: '₦1,000', hint: 'Standard — one organization' },
+  { value: 1500, label: '₦1,500', hint: 'Depending on the case' },
+  { value: 500, label: '₦500', hint: 'To balance up' },
+];
+
+/**
+ * The bank account the public transfers the fee to. Set these to the real
+ * receiving account before launch — when the account number is empty the
+ * public page shows a "details coming soon" notice instead of guessing
+ * (never show a wrong receiving account — people pay real money into it).
+ */
+export const PUBLIC_TRANSFER = {
+  bank: '',
+  accountName: '',
+  accountNumber: '',
+};

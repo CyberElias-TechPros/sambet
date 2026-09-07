@@ -1,9 +1,11 @@
 # Data model
 
 SQLite (Cloudflare D1). Canonical DDL: `worker/migrations/0001_init.sql` +
-`worker/migrations/0002_import_approval.sql`. The worker also self-heals the same schema
-at boot (`ensureSchema`, including the additive 0002 columns via `PRAGMA table_info`),
-so a fresh or pre-existing database works without manual steps.
+`worker/migrations/0002_import_approval.sql` +
+`worker/migrations/0003_public_submissions.sql`. The worker also self-heals the same
+schema at boot (`ensureSchema` — the full table set for fresh databases, and the
+additive 0002 columns via `PRAGMA table_info` for pre-existing ones), so a fresh or
+pre-existing database works without manual steps.
 
 ## Tables
 
@@ -51,7 +53,7 @@ disabled or demoted.
 | status | TEXT NOT NULL | default `'registered'` (open vocabulary; UI offers registered / approved / rejected / pending) |
 | notes | TEXT | |
 | cycle | TEXT NOT NULL | default `'Project 1'` (project round/cohort) |
-| source | TEXT NOT NULL | `'manual'` or `'import'` |
+| source | TEXT NOT NULL | `'manual'`, `'import'` or `'public'` (verified public submission) |
 | source_import_id | INTEGER → imports.id | which import created it |
 | created_at / updated_at | TEXT | |
 | deleted_at | TEXT | **soft delete** — rows are never physically removed by the app; list/stats/exports all exclude soft-deleted rows |
@@ -79,18 +81,48 @@ in SQL on read, so they can never drift from the data.
 | rejection_reason | admin's reason (or the auto `Expired — not reviewed within 7 days`) |
 | created_at | |
 
+### `submissions` (public self-registration)
+Public organizations pay a fee by bank transfer and submit their details + a proof-of-payment image. See ADR-0004.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | INTEGER PK | |
+| reference | TEXT UNIQUE | human-friendly id: `SAM-<year>-<id padded to 5>` (e.g. `SAM-2026-00001`) |
+| org_name | TEXT NOT NULL | as submitted |
+| phone | TEXT NOT NULL | normalized with the same rules as `organizations.phone` |
+| state | TEXT | as submitted (canonical state lives on the org once verified) |
+| bank | TEXT NOT NULL | the bank the fee was paid *from* (as submitted) |
+| account_number | TEXT NOT NULL | digits only |
+| account_name | TEXT | |
+| amount_paid | INTEGER NOT NULL | Naira claimed by the submitter (default 1000) |
+| payment_date | TEXT | `YYYY-MM-DD`, as claimed |
+| payment_reference | TEXT | optional teller / transaction reference |
+| notes | TEXT | submitter's free-text message |
+| pop_key | TEXT NOT NULL | R2 key of the proof-of-payment image: `submissions/<reference>/pop.<ext>` |
+| status | TEXT NOT NULL | `pending` → `verified` \| `rejected` (set once by an admin) |
+| org_id | INTEGER → organizations.id | the registry row created from, or linked to, this submission |
+| reviewed_by | INTEGER → users.id | |
+| reviewed_at | TEXT | |
+| rejection_reason | TEXT | shown to the submitter via `/track` |
+| created_at | TEXT | |
+
+Indexes: `status`, `created_at DESC`, `phone`, `account_number`. The POP image is
+stored in R2 and is served **only** through the authenticated `GET /api/submissions/:id/pop`
+endpoint (never a public URL).
+
 ### `audit_log`
 Append-only. Actions: `account.setup`, `auth.login`, `password.change`,
 `password.reset`, `org.create`, `org.update`, `org.delete`, `org.bulk_delete`,
 `import.completed`, `import.submitted`, `import.approved`, `import.rejected`,
-`user.created`, `user.updated`.
+`user.created`, `user.updated`, `submission.public`, `submission.verified`,
+`submission.rejected`.
 `details` is JSON with changed-field summaries (e.g. `{"changed":["state","phone"]}`)
 — **no account numbers or third-party PII** in details (password resets log the target
 e-mail, never the password).
 
 ### `rate_limits`
-Fixed window: `key` (e.g. `login:<ip>`), `count`, `window_start` (unix seconds).
-Pruned opportunistically on writes.
+Fixed window: `key` (e.g. `login:<ip>`, `import:<ip>`, `pubsub:<ip>`), `count`,
+`window_start` (unix seconds). Pruned opportunistically on writes.
 
 ## Normalization rules (import + manual entry)
 
@@ -129,3 +161,11 @@ Applied in `worker/src/lib/normalize-org.ts` (shared by importer and CRUD):
 7. Roles: `admin` and `editor`. Import execute/approve/reject and all `/api/users`
    routes are admin-only (403 for editors). A user cannot disable or demote
    themselves; the last active admin cannot be disabled or demoted.
+8. Submissions: a `pending` submission can be reviewed exactly once — `verify`
+   (create or link) or `reject` sets the terminal status; a second review returns
+   **409**. Verify-create is blocked with **409** when the new org's phone or
+   account number already exists in the registry (forces a deliberate link).
+   The POP image is only reachable via the authenticated staff endpoint; the public
+   status endpoint leaks only coarse status (+ org name when verified, + reason
+   when rejected). Public submissions are rate-limited to 8/hour per IP plus a
+   honeypot field.

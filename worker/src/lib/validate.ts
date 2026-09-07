@@ -120,3 +120,62 @@ export function zodFieldErrors(result: {
   }
   return out;
 }
+
+/* ---------------- public submissions (proof of payment) ---------------- */
+
+export const POP_MAX_BYTES = 6 * 1024 * 1024; // 6 MB proof-of-payment image
+
+/** Derive a safe image extension from the uploaded file name or MIME type. */
+export function popFileExt(name: string | undefined, type: string | null): 'jpg' | 'png' | 'webp' | null {
+  const map: Record<string, 'jpg' | 'png' | 'webp'> = { jpeg: 'jpg', jpg: 'jpg', png: 'png', webp: 'webp' };
+  const byName = name?.toLowerCase().match(/\.(jpe?g|png|webp)$/)?.[1];
+  if (byName) return map[byName] ?? null;
+  const byType = type?.toLowerCase().match(/^image\/(jpeg|png|webp)$/)?.[1];
+  if (byType) return map[byType] ?? null;
+  return null;
+}
+
+const publicPhone = z
+  .string()
+  .trim()
+  .max(32)
+  .refine((v) => {
+    const d = v.replace(/[Oo]/g, '0').replace(/\D/g, '');
+    return d.length >= 9 && d.length <= 15;
+  }, 'Enter a valid phone number (e.g. 0803 123 4567)');
+
+const publicAccount = z
+  .string()
+  .trim()
+  .max(32)
+  .refine((v) => {
+    const d = v.replace(/\D/g, '');
+    return d.length >= 8 && d.length <= 12;
+  }, 'Account number should be 8–12 digits');
+
+/**
+ * Fields the public submits with their proof of payment. Kept deliberately
+ * simple — this is a mobile-first form filled in by the organization itself.
+ */
+export const publicSubmissionSchema = z.object({
+  org_name: z.string().trim().min(2, 'Enter the organization name').max(200),
+  phone: publicPhone,
+  state: z.string().trim().max(100).optional().transform((v) => v || null),
+  bank: z.string().trim().min(1, 'Enter the bank you paid from').max(120),
+  account_number: publicAccount,
+  account_name: z.string().trim().max(200).optional().transform((v) => v || null),
+  amount_paid: z.coerce
+    .number()
+    .int('Enter a whole amount')
+    .min(100, 'Amount looks too small')
+    .max(100000, 'Amount looks too large'),
+  payment_date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Enter the date you paid')
+    .optional()
+    .transform((v) => v || null),
+  payment_reference: z.string().trim().max(100).optional().transform((v) => v || null),
+  notes: z.string().trim().max(2000).optional().transform((v) => v || null),
+});
+
+export type PublicSubmissionInput = z.infer<typeof publicSubmissionSchema>;

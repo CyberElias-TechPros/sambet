@@ -188,3 +188,68 @@ export interface AuditRow {
   ip: string | null;
   created_at: string;
 }
+
+export interface SubmissionMatch {
+  id: number;
+  name: string;
+  phone: string | null;
+  state_norm: string | null;
+  match: 'phone' | 'account' | 'name+state';
+}
+
+/** A public self-registration submission (payment + proof). */
+export interface Submission {
+  id: number;
+  reference: string;
+  org_name: string;
+  phone: string;
+  state: string | null;
+  bank: string;
+  account_number: string;
+  account_name: string | null;
+  amount_paid: number;
+  payment_date: string | null;
+  payment_reference: string | null;
+  notes: string | null;
+  status: 'pending' | 'verified' | 'rejected';
+  org_id: number | null;
+  reviewed_by: number | null;
+  reviewed_at: string | null;
+  rejection_reason: string | null;
+  created_at: string;
+}
+
+export interface SubmissionDetail extends Submission {
+  matches: SubmissionMatch[];
+  /** Same-origin authenticated image URL, or null when unavailable. */
+  pop_url: string | null;
+  reviewer: string | null;
+}
+
+export interface SubmissionSummary {
+  pending: number;
+  verified: number;
+  rejected: number;
+}
+
+export interface SubmissionStats {
+  counts: { pending: number; verified: number; rejected: number; today: number; week: number; month: number };
+  naira: { pending: number; verified: number; last30d: number };
+  trend: { date: string; total: number; verified: number; rejected: number; pending: number }[];
+  topStates: { state: string; count: number }[];
+}
+
+export interface PublicSubmitResult {
+  id: number;
+  reference: string;
+  status: 'pending';
+  matches: SubmissionMatch[];
+}
+
+export interface PublicStatus {
+  reference: string;
+  status: 'pending' | 'verified' | 'rejected';
+  created_at: string;
+  org_name: string | null;
+  reason: string | null;
+}

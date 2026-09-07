@@ -37,10 +37,11 @@ The binding name (`FILES`) and bucket name (`sambet-imports`) already match
 npx wrangler d1 migrations apply sambet-db --remote
 ```
 
-This runs `worker/migrations/0001_init.sql` then `0002_import_approval.sql` (the
-import-approval columns + roles). (The worker also self-heals the schema on its first
-request, so skipping this step won't break anything — but run it anyway; it's the
-canonical, reviewable path.)
+This runs `worker/migrations/0001_init.sql`, `0002_import_approval.sql` (the
+import-approval columns + roles) and `0003_public_submissions.sql` (the public
+self-registration queue). (The worker also self-heals the schema on its first request,
+so skipping this step won't break anything — but run it anyway; it's the canonical,
+reviewable path.)
 
 ### 1.4 Deploy the Worker
 
@@ -105,12 +106,29 @@ them out immediately). If you ever need an account out-of-band, insert a `users`
 directly in D1 with a properly hashed password — do **not** wipe `users` to re-run
 setup, since sessions cascade-delete with their user and everyone would be logged out.
 
-### 2.4 Migrate the existing registry
+### 2.4 Set the public payment account
+
+The public pays the registration fee by bank transfer and submits the proof of payment
+on `/submit`. Put the receiving account in
+`web/src/lib/constants.ts` → `PUBLIC_TRANSFER` (`bank`, `accountName`,
+`accountNumber`) and redeploy — the public page shows these details; while the account
+number is empty it shows a "details being finalised" notice instead. The fee presets
+(₦1,000 / ₦1,500 / ₦500) are in the same file (`FEE_OPTIONS`) — adjust if the program's
+fees change.
+
+### 2.5 Migrate the existing registry
 
 In the deployed app: **Import → choose `SAMBET GRASSROOT PROJECT 1.xlsx` → Review →
 Import**. The preview will show **1,669 rows / 0 errors / N duplicates** (the workbook's
 2,000 rows include 331 S/N-only blank rows that are skipped by design). Choose the
 **Update** strategy (first import → all created) and confirm.
+
+After that, share the **public registration URL** (`https://<your-vercel-domain>/submit`
+— also linked from the landing page and the staff sidebar) with the organizations.
+Submissions appear in **Submissions** (staff) with a live pending badge in the sidebar;
+an admin verifies each one (payment + POP) and either adds the organization to the
+registry or links the payment to an existing record. The dashboard shows live
+submissions stats and naira collected.
 
 ---
 

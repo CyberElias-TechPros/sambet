@@ -5,8 +5,10 @@ organizations (MPCSLs / enterprises) applying for grassroots projects — roads,
 solar lighting, schools, housing, agriculture and more — across Nigeria.
 
 It replaces a manually maintained spreadsheet (2,000 rows) with a secure, searchable,
-data-quality-aware web app: browse and edit records, bulk-import and export **xlsx/csv**,
-see duplicates and missing fields at a glance, and keep a full audit trail.
+data-quality-aware web app: the **public registers its own organizations** (fee + proof
+of payment), staff verify each payment before the organization joins, and staff
+browse/edit records, bulk-import and export **xlsx/csv**, see duplicates and missing
+fields at a glance, and keep a full audit trail.
 
 - **Frontend** — Next.js 14 + React 18 + Tailwind, deployed on **Vercel**
 - **Backend** — Cloudflare **Worker** (Hono) + **D1** (SQLite) + **R2** (files)
@@ -17,18 +19,18 @@ see duplicates and missing fields at a glance, and keep a full audit trail.
 sambet/
 ├── web/                 # Next.js frontend (deploy to Vercel)
 │   └── src/
-│       ├── app/         # /login, /dashboard, /organizations, /import, /team, /audit, /settings
+│       ├── app/         # public: / /submit /track · staff: /login /dashboard /organizations /import /submissions /team /audit /settings
 │       ├── components/  # design system (ui/), charts/, layout/, orgs/
 │       ├── hooks/       # use-auth, use-toast
 │       └── lib/         # api client, types, formatting, constants
 ├── worker/              # Cloudflare Worker API (deploy with wrangler)
 │   ├── src/
-│   │   ├── routes/      # /api/auth, /api/organizations, /api/imports, /api/stats
+│   │   ├── routes/      # /api/auth, /api/public, /api/organizations, /api/imports, /api/submissions, /api/users, /api/stats
 │   │   ├── services/    # organizations, importer, exporter, stats, audit
 │   │   ├── lib/         # normalization (states/banks/categories/phones), validation
 │   │   ├── auth/        # PBKDF2 passwords, sessions, rate limiting
 │   │   └── schema.ts    # self-healing D1 schema
-│   ├── migrations/      # canonical DDL (0001_init.sql, 0002_import_approval.sql)
+│   ├── migrations/      # canonical DDL (0001_init, 0002_import_approval, 0003_public_submissions)
 │   └── scripts/         # integration test (real workerd + the real xlsx)
 ├── docs/                # ARCHITECTURE, DATA_MODEL, DEPLOYMENT, adr/
 └── SAMBET GRASSROOT PROJECT 1.xlsx   # the legacy registry (migration source)
@@ -36,6 +38,16 @@ sambet/
 
 ## Features
 
+- **Public self-registration** — a public landing page + mobile-first form: the
+  organization pays the fee (₦1,000 standard / ₦1,500 special / ₦500 top-up) by bank
+  transfer and submits its details with a picture of the **proof of payment**. It gets a
+  reference (`SAM-2026-00001`) and can track its status at `/track` — no account needed.
+  Duplicate matches are surfaced to both the submitter and the reviewer so the same
+  organization is never registered twice.
+- **Payment verification queue** — staff see submissions with the proof-of-payment
+  image and duplicate matches; an admin verifies (payment + POP) and either **adds the
+  organization to the registry** or **links the payment to an existing record**, or
+  rejects with a reason. Live pending badge, dashboard stats and naira collected.
 - **Registry** — search, filter (state / category / bank / status / cycle / incomplete /
   duplicates), sort, paginate; detail view with every field, copy-to-clipboard, related
   duplicates, and per-record missing-field list.
@@ -52,7 +64,8 @@ sambet/
   temp password, change role, disable/re-enable (instant sign-out), reset password.
 - **Bulk export (xlsx/csv)** — honors the active filters; standardized columns included.
 - **Dashboard** — totals, state & category charts, status breakdown, most-missing fields,
-  recently updated records, recent imports.
+  recently updated records, recent imports, and a **public-submissions band** (pending /
+  verified / rejected, ₦ collected, 14-day trend, top submitting states).
 - **Data quality** — normalized Nigerian states (37 + FCT, 91+ known spellings), canonical
   banks, 13 project categories inferred from the description, E.164 phones; duplicate
   detection (S/N, name+phone, name+account, name+state); missing-field analytics.
@@ -101,4 +114,4 @@ setup flow is the onboarding.
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — components, request flows, security & performance notes
 - **[docs/DATA_MODEL.md](docs/DATA_MODEL.md)** — tables, normalization rules, invariants
 - **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** — Vercel + Cloudflare deploy, backups, rollback
-- **[docs/adr/](docs/adr/)** — key decisions (Workers+D1+R2-only; two-phase import; role-based import approval)
+- **[docs/adr/](docs/adr/)** — key decisions (Workers+D1+R2-only; two-phase import; role-based import approval; public self-registration with manual payment verification)

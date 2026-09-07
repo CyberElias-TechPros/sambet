@@ -88,7 +88,7 @@ async function waitForHealth(timeoutMs = 90000) {
 async function main() {
   console.log('— Sambet API integration test —\n');
 
-  console.log('[1/10] Clean local state, start wrangler dev…');
+  console.log('[1/11] Clean local state, start wrangler dev…');
   const stateDir = '.wrangler/state';
   if (existsSync(stateDir)) rmSync(stateDir, { recursive: true, force: true });
 
@@ -143,7 +143,7 @@ async function main() {
   console.log('  worker up\n');
 
   try {
-    console.log('[2/10] Fresh DB: status + auth guard');
+    console.log('[2/11] Fresh DB: status + auth guard');
     let r = await req('GET', '/api/auth/status');
     check('health ok', (await req('GET', '/api/health')).data.ok === true);
     check('not initialized', r.status === 200 && r.data.initialized === false);
@@ -152,7 +152,7 @@ async function main() {
     r = await req('GET', '/api/stats');
     check('unauthenticated stats → 401', r.status === 401);
 
-    console.log('\n[3/10] First-run setup');
+    console.log('\n[3/11] First-run setup');
     r = await req('POST', '/api/auth/setup', { body: { name: 'A B', email: 'a@b.co', password: 'short' } });
     check('weak password rejected (400)', r.status === 400);
     r = await req('POST', '/api/auth/setup', { body: { name: 'A B', email: 'a@b.co', password: 'abcdefgh' } });
@@ -169,7 +169,7 @@ async function main() {
     check('second setup → 409', r.status === 409);
     const adminId = (await req('GET', '/api/auth/me')).data?.user?.id;
 
-    console.log('\n[4/10] Migrate the real legacy workbook through the import API');
+    console.log('\n[4/11] Migrate the real legacy workbook through the import API');
     // The schema self-bootstraps on first request (already exercised above).
     // Seeding goes through the production import pipeline with the actual
     // 2000-row file — if this works, the user's real migration works.
@@ -201,7 +201,7 @@ async function main() {
     const incTotal = (await req('GET', '/api/organizations?incomplete=1&pageSize=1')).data?.meta?.total ?? 0;
     check('incomplete filter finds partial rows', incTotal > 100, `incomplete=${incTotal}`);
 
-    console.log('\n[5/10] Stats + audit');
+    console.log('\n[5/11] Stats + audit');
     r = await req('GET', '/api/stats');
     check('stats.total = 1669', r.data?.total === 1669, `got ${r.data?.total}`);
     check('stats.statesCovered between 25 and 37', r.data?.statesCovered >= 25 && r.data?.statesCovered <= 37, `got ${r.data?.statesCovered}`);
@@ -210,7 +210,7 @@ async function main() {
     check('stats.duplicates > 40', (r.data?.duplicates ?? 0) > 40, `got ${r.data?.duplicates}`);
     check('stats.recent has rows', r.data?.recent?.length === 6);
 
-    console.log('\n[6/10] CRUD + validation');
+    console.log('\n[6/11] CRUD + validation');
     r = await req('POST', '/api/organizations', {
       body: { name: '  IT Test Org  ', ceo_name: 'Jane Doe', phone: 'O8031112222', email: 'JANE@IT.CO', state: 'RIVRES STATE', bank: 'U B A', account_number: ',0123456789', lga: 'Mushin', project_type: 'Road and Borehole', sn: 9001 },
     });
@@ -258,7 +258,7 @@ async function main() {
     r = await req('POST', '/api/organizations/bulk-delete', { body: { ids: [bulk1, bulk2, 999999] } });
     check('bulk delete removes 2', r.status === 200 && r.data?.deleted === 2, JSON.stringify(r.data));
 
-    console.log('\n[7/10] Import: preview → execute → idempotent re-run');
+    console.log('\n[7/11] Import: preview → execute → idempotent re-run');
     const ws = XLSX.utils.aoa_to_sheet([
       ['S/N', 'NAME OF ORGANIZATION', 'NAME OF CEO', 'PHONE NUMBER', 'BANK', 'ACCOUNT NUMBER', 'EMAIL', 'LOCAL GOVERNMENT', 'STATE', 'PROJECT TYPE'],
       [1, 'AYMAN T MPCSL', 'SHEIKH MUHAMMAD TEQQIYYUAH', '08039189574', 'ZENITH BANK', '1312841464', 'aymantmpcsl@gmail.com', 'AKOKO NORTHEASTH LG', 'ONDO STATE', "ELECTRICITY'S"],
@@ -305,7 +305,7 @@ async function main() {
     });
     check('unsupported file type → 400', r.status === 400);
 
-    console.log('\n[8/10] Export + template + audit');
+    console.log('\n[8/11] Export + template + audit');
     const csv = await reqBin('/api/organizations/export?format=csv&search=AYMAN%20T%20MPCSL');
     check('csv export 200', csv.status === 200);
     const csvText = new TextDecoder().decode(csv.buf);
@@ -335,7 +335,7 @@ async function main() {
     r = await req('GET', '/api/imports?pageSize=5');
     check('import history has 3 completed', r.data?.data?.filter((i) => i.status === 'completed').length === 3, JSON.stringify(r.data?.data?.map((i) => i.status)));
 
-    console.log('\n[9/10] Team roles + import approval');
+    console.log('\n[9/11] Team roles + import approval');
     // — team management (admin only)
     r = await req('POST', '/api/users', { body: { name: 'Field Officer', email: 'editor@sambet.test', password: 'Editor@12345', role: 'editor' } });
     check('admin creates editor account (201)', r.status === 201, JSON.stringify(r.data).slice(0, 150));
@@ -442,7 +442,7 @@ async function main() {
     // NOTE: no re-login here — the login window budget (5/min/IP, shared across
     // users in local mode) must still have room for the rate-limit section below.
 
-    console.log('\n[10/10] Login/logout + rate limiting (run last — burns the 5/min budget)');
+    console.log('\n[10/11] Login/logout + rate limiting (run last — burns the 5/min budget)');
     // Login budget: 5/min per IP, shared across users (single IP in local mode).
     // Earlier in this run exactly 2 logins happened (editor sign-in + the
     // disabled-editor attempt), so: wrong(3), unknown(4), good(5), then the
@@ -459,6 +459,141 @@ async function main() {
     check('login ok (200)', r.status === 200);
     const rlHit = await req('POST', '/api/auth/login', { body: { email: ADMIN.email, password: 'WrongPass2' } });
     check('6th attempt in a minute → 429', rlHit.status === 429, `got ${rlHit.status}`);
+
+    /* ------------------------------------------------------------------ */
+    console.log('\n[11/11] Public self-registration + payment verification');
+    // No logins here — public endpoints are unauthenticated and staff calls
+    // reuse the admin session from above. Public submissions are rate-limited
+    // on their own bucket (8/hour per IP), so 8 submissions + a 9th → 429.
+    const POP = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+      'base64',
+    ); // 1x1 PNG
+    const POP_LEN = POP.length;
+    const TODAY = new Date().toISOString().slice(0, 10);
+    const popForm = (fields) => {
+      const fd = new FormData();
+      for (const [k, v] of Object.entries(fields)) if (v !== undefined) fd.append(k, String(v));
+      fd.append('pop', new File([POP], 'pop.png', { type: 'image/png' }));
+      return fd;
+    };
+
+    // An existing org with a phone number, for duplicate matching.
+    const dupTarget = (await req('POST', '/api/organizations', { body: { name: 'Match Target Org', phone: '0811 000 1111', state: 'Oyo', bank: 'Zenith Bank', account_number: '2200001111' } })).data?.data;
+    check('duplicate-match target org created', !!dupTarget, JSON.stringify((await req('GET', '/api/health')).data));
+    const dupPhone = dupTarget.phone; // E.164 as stored
+
+    // s1 — clean submission
+    r = await req('POST', '/api/public/submit', { cookie: '', body: popForm({ org_name: 'Public Org Alpha', phone: '0803 222 3333', state: 'Ondo', bank: 'Zenith Bank', account_number: '1010101010', account_name: 'Alpha Account', amount_paid: '1000', payment_date: TODAY, notes: 'Fresh payment thank you' }) });
+    check('public submit ok (201)', r.status === 201, JSON.stringify(r.data));
+    const s1 = r.data?.data;
+    check('reference format SAM-YYYY-#####', typeof s1?.reference === 'string' && /^SAM-\d{4}-\d{5}$/.test(s1.reference), s1?.reference);
+    check('submit returns pending', s1?.status === 'pending');
+    check('no duplicate matches for a fresh org', Array.isArray(s1?.matches) && s1.matches.length === 0, JSON.stringify(s1?.matches));
+
+    // Public status lookup — coarse status only, no data leakage
+    r = await req('GET', `/api/public/status/${s1?.reference}`, { cookie: '' });
+    check('public status ok', r.status === 200 && r.data?.data?.status === 'pending', JSON.stringify(r.data));
+    check('public status leaks no payment details', !JSON.stringify(r.data).includes('1010101010') && !JSON.stringify(r.data).includes('Zenith'));
+    r = await req('GET', '/api/public/status/SAM-1999-99999', { cookie: '' });
+    check('unknown reference → 404', r.status === 404);
+
+    // Staff list requires auth
+    r = await req('GET', '/api/submissions', { cookie: '' });
+    check('submissions list unauthenticated → 401', r.status === 401);
+
+    r = await req('GET', '/api/submissions');
+    check('admin sees the submission', r.status === 200 && r.data?.data?.[0]?.reference === s1?.reference, JSON.stringify(r.data?.data?.[0]));
+    check('tab summary counts pending', r.data?.summary?.pending === 1, JSON.stringify(r.data?.summary));
+
+    // s2 — same phone as an existing org → duplicate match surfaced
+    r = await req('POST', '/api/public/submit', { cookie: '', body: popForm({ org_name: 'Public Org Beta', phone: dupPhone, state: 'Ondo', bank: 'GTBank', account_number: '1020202020', amount_paid: '1000' }) });
+    check('duplicate-phone submit ok (201)', r.status === 201, JSON.stringify(r.data));
+    const s2 = r.data?.data;
+    check('submitter warned about the duplicate', s2?.matches?.[0]?.match === 'phone' && s2?.matches?.[0]?.id === dupTarget.id, JSON.stringify(s2?.matches));
+
+    // Detail + POP image (staff only)
+    r = await req('GET', `/api/submissions/${s2?.id}`);
+    check('detail includes matches', r.status === 200 && r.data?.data?.matches?.length >= 1);
+    check('detail points at the POP image', r.data?.data?.pop_url === `/api/submissions/${s2?.id}/pop`, r.data?.data?.pop_url);
+    check('detail reviewer is null while pending', r.data?.data?.reviewer === null);
+    {
+      const popRes = await fetch(`${BASE}/api/submissions/${s2?.id}/pop`, { headers: { cookie } });
+      const popBuf = new Uint8Array(await popRes.arrayBuffer());
+      check('POP image downloads for staff (200, image/png)', popRes.status === 200 && (popRes.headers.get('content-type') ?? '').includes('image/png') && popBuf.length === POP_LEN, `${popRes.status} ${popRes.headers.get('content-type')} len=${popBuf.length}/${POP_LEN}`);
+      const popAnon = await fetch(`${BASE}/api/submissions/${s2?.id}/pop`);
+      check('POP image blocked unauthenticated (401)', popAnon.status === 401);
+    }
+
+    // Verify s1 → creates the org in the registry
+    r = await req('POST', `/api/submissions/${s1?.id}/verify`, { body: { action: 'create', org: { name: 'Public Org Alpha', phone: '0803 222 3333', state: 'Ondo', bank: 'Zenith Bank', account_number: '1010101010', ceo_name: 'Alpha Leader', project_type: 'Borehole water project', notes: 'Verified against bank statement' } } });
+    check('verify-create ok', r.status === 200 && r.data?.data?.org?.id > 0, JSON.stringify(r.data));
+    const s1OrgId = r.data?.data?.org?.id;
+    r = await req('GET', '/api/organizations?search=Public%20Org%20Alpha&pageSize=5');
+    const s1Org = r.data?.data?.[0];
+    check('org added to the registry', !!s1Org && s1Org.id === s1OrgId, JSON.stringify(s1Org));
+    check('org recorded with source=public', s1Org?.source === 'public', s1Org?.source);
+    r = await req('GET', `/api/public/status/${s1?.reference}`, { cookie: '' });
+    check('public status now verified + shows org name', r.data?.data?.status === 'verified' && r.data?.data?.org_name === 'Public Org Alpha', JSON.stringify(r.data?.data));
+    r = await req('POST', `/api/submissions/${s1?.id}/verify`, { body: { action: 'create', org: { name: 'Public Org Alpha', phone: '0803 222 3333' } } });
+    check('re-verify → 409 (already reviewed)', r.status === 409);
+
+    // Verify s2 → links to the existing org (no duplicate row)
+    r = await req('POST', `/api/submissions/${s2?.id}/verify`, { body: { action: 'link', orgId: dupTarget.id } });
+    check('verify-link ok', r.status === 200 && r.data?.data?.org?.id === dupTarget.id, JSON.stringify(r.data));
+    r = await req('GET', `/api/submissions/${s2?.id}`);
+    check('linked submission keeps the org link', r.data?.data?.org_id === dupTarget.id && r.data?.data?.status === 'verified');
+    check('link recorded reviewer name', typeof r.data?.data?.reviewer === 'string' && r.data.data.reviewer.length > 0, r.data?.data?.reviewer);
+
+    // s3 (will be rejected), s4 (stays pending), honeypot, bad account, s7 (stays pending)
+    r = await req('POST', '/api/public/submit', { cookie: '', body: popForm({ org_name: 'Public Org Gamma', phone: '0803 444 5555', bank: 'UBA', account_number: '1030303030', amount_paid: '1500' }) });
+    const s3 = r.data?.data;
+    check('s3 submit ok', r.status === 201, JSON.stringify(r.data));
+    r = await req('POST', '/api/public/submit', { cookie: '', body: popForm({ org_name: 'Public Org Delta', phone: '0803 666 7777', bank: 'Access Bank', account_number: '1040404040', amount_paid: '1000' }) });
+    check('s4 submit ok', r.status === 201);
+    r = await req('POST', '/api/public/submit', { cookie: '', body: popForm({ org_name: 'Spam Bot LLC', phone: '0803 111 2222', bank: 'GTBank', account_number: '1090909090', amount_paid: '1000', website: 'http://spam.example' }) });
+    check('honeypot submission → 400', r.status === 400);
+    r = await req('POST', '/api/public/submit', { cookie: '', body: popForm({ org_name: 'Bad Account Org', phone: '0803 333 4444', bank: 'GTBank', account_number: '12345', amount_paid: '1000' }) });
+    check('invalid account number → 400 with field error', r.status === 400 && !!r.data?.fields?.account_number, JSON.stringify(r.data));
+    r = await req('POST', '/api/public/submit', { cookie: '', body: popForm({ org_name: 'Public Org Epsilon', phone: '0803 888 9999', bank: 'Wema Bank', account_number: '1050505050', amount_paid: '1500' }) });
+    check('s7 submit ok', r.status === 201);
+
+    // s8 — phone now taken by the org created from s1 → guard + link path
+    r = await req('POST', '/api/public/submit', { cookie: '', body: popForm({ org_name: 'Public Org Zeta', phone: '0803 222 3333', bank: 'FCMB', account_number: '1060606060', amount_paid: '1000' }) });
+    const s8 = r.data?.data;
+    check('s8 submit ok', r.status === 201);
+    check('s8 match points at s1 org', s8?.matches?.[0]?.id === s1OrgId, JSON.stringify(s8?.matches));
+    r = await req('POST', `/api/submissions/${s8?.id}/verify`, { body: { action: 'create', org: { name: 'Public Org Zeta', phone: '0803 222 3333', bank: 'FCMB', account_number: '1060606060' } } });
+    check('create with a taken phone → 409 + match', r.status === 409 && (r.data?.matches?.length ?? 0) >= 1, JSON.stringify(r.data));
+    r = await req('POST', `/api/submissions/${s8?.id}/verify`, { body: { action: 'link', orgId: s1OrgId } });
+    check('s8 linked to the existing org', r.status === 200 && r.data?.data?.org?.id === s1OrgId, JSON.stringify(r.data));
+
+    // Reject s3 with a reason
+    r = await req('POST', `/api/submissions/${s3?.id}/reject`, { body: { reason: 'Payment not found in bank records' } });
+    check('reject ok', r.status === 200 && r.data?.data?.status === 'rejected', JSON.stringify(r.data));
+    r = await req('GET', `/api/public/status/${s3?.reference}`, { cookie: '' });
+    check('public status shows rejection reason', r.data?.data?.status === 'rejected' && r.data?.data?.reason === 'Payment not found in bank records', JSON.stringify(r.data?.data));
+    r = await req('POST', `/api/submissions/${s3?.id}/reject`, { body: { reason: 'again' } });
+    check('re-reject → 409', r.status === 409);
+
+    // Analytics
+    r = await req('GET', '/api/submissions/stats');
+    const st = r.data;
+    check('stats counts (pending/verified/rejected)', st?.counts?.pending === 2 && st?.counts?.verified === 3 && st?.counts?.rejected === 1, JSON.stringify(st?.counts));
+    check('stats naira (pending 2500, verified 3000)', st?.naira?.pending === 2500 && st?.naira?.verified === 3000, JSON.stringify(st?.naira));
+    check('trend covers 14 days', Array.isArray(st?.trend) && st.trend.length === 14, `len=${st?.trend?.length}`);
+    check('trend total matches today\'s volume', (st?.trend?.[13]?.total ?? 0) === 6, JSON.stringify(st?.trend?.[13]));
+    check('top states populated', Array.isArray(st?.topStates) && st.topStates.length >= 1, JSON.stringify(st?.topStates));
+
+    // Rate limit: 9th submission this hour from the same IP
+    r = await req('POST', '/api/public/submit', { cookie: '', body: popForm({ org_name: 'Over Budget Org', phone: '0803 555 6666', bank: 'GTBank', account_number: '1070707070', amount_paid: '1000' }) });
+    check('9th submission this hour → 429', r.status === 429, `got ${r.status}`);
+
+    // List filters
+    r = await req('GET', '/api/submissions?status=pending');
+    check('status filter (pending = 2)', r.data?.data?.length === 2, `n=${r.data?.data?.length}`);
+    r = await req('GET', `/api/submissions?q=${encodeURIComponent(s3?.reference)}`);
+    check('search filter by reference', r.data?.data?.length === 1 && r.data?.data?.[0]?.id === s3?.id, `n=${r.data?.data?.length}`);
   } finally {
     try {
       if (worker.pid) process.kill(-worker.pid, 'SIGKILL');

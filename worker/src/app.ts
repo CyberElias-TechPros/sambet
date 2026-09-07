@@ -9,6 +9,8 @@ import { orgRoutes } from './routes/organizations';
 import { statsRoutes } from './routes/stats';
 import { importRoutes } from './routes/imports';
 import { userRoutes } from './routes/users';
+import { publicRoutes } from './routes/public';
+import { submissionRoutes } from './routes/submissions';
 import { ensureSchema } from './schema';
 import type { AppEnv } from './types';
 
@@ -54,6 +56,19 @@ const requireAuth: MiddlewareHandler<AppEnv> = async (c, next) => {
 app.get('/api/health', (c) => c.json({ ok: true, service: 'sambet-api', time: new Date().toISOString() }));
 app.route('/api/auth', authRoutes);
 
+// Public self-registration (proof-of-payment submission). No auth; throttled
+// per IP because the POP image upload is comparatively heavy.
+app.use('/api/public/submit', async (c, next) => {
+  const ip =
+    c.req.header('cf-connecting-ip') ??
+    c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ??
+    'unknown';
+  const rl = await rateLimit(c.env, `pubsub:${ip}`, 8, 3600);
+  if (!rl.ok) return c.json({ error: 'Too many submissions from your connection right now. Please try again later.' }, 429);
+  await next();
+});
+app.route('/api/public', publicRoutes);
+
 /* ------------------------- authenticated ------------------------- */
 app.use('/api/organizations', requireAuth);
 app.use('/api/organizations/*', requireAuth);
@@ -63,6 +78,8 @@ app.use('/api/imports', requireAuth);
 app.use('/api/imports/*', requireAuth);
 app.use('/api/users', requireAuth);
 app.use('/api/users/*', requireAuth);
+app.use('/api/submissions', requireAuth);
+app.use('/api/submissions/*', requireAuth);
 
 // Extra throttle for import previews (file parsing is comparatively heavy).
 app.use('/api/imports/preview', async (c, next) => {
@@ -79,6 +96,7 @@ app.route('/api/organizations', orgRoutes);
 app.route('/api/stats', statsRoutes);
 app.route('/api/imports', importRoutes);
 app.route('/api/users', userRoutes);
+app.route('/api/submissions', submissionRoutes);
 
 /* ------------------------- 404 + errors ------------------------- */
 app.notFound((c) => c.json({ error: 'Not found' }, 404));

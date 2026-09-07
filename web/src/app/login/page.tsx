@@ -2,7 +2,8 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Sprout, Building2, Upload, ShieldCheck, ArrowRight, LockKeyhole } from 'lucide-react';
+import Link from 'next/link';
+import { Sprout, Building2, Upload, ShieldCheck, ArrowRight, LockKeyhole, Send } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { useToast } from '@/hooks/use-toast';
 import { Button, Field, Input } from '@/components/ui/primitives';
@@ -40,6 +41,7 @@ function BrandPanel() {
         <ul className="mt-8 space-y-4">
           {[
             { icon: Building2, title: 'Full member registry', text: '2,000+ organizations with contacts, banks, locations and project types.' },
+            { icon: Send, title: 'Public registration', text: 'Organizations pay their fee, upload proof of payment, and you verify before they join.' },
             { icon: Upload, title: 'Excel import & export', text: 'Upload workbooks, review a validation report, import in one click — export anytime.' },
             { icon: ShieldCheck, title: 'Private & audited', text: 'Staff-only access with sessions, rate limiting and a full audit trail.' },
           ].map((f) => (
@@ -221,6 +223,12 @@ export default function LoginPage() {
             {isSetup
               ? 'Keep these credentials safe — they control access to the whole registry.'
               : 'Access is restricted to project staff. Activity is logged.'}
+          </p>
+          <p className="mt-3 text-center text-xs text-ink-faint">
+            Registering an organization?{' '}
+            <Link href="/submit" className="font-medium text-leaf-700 hover:text-leaf-900">
+              Public registration &amp; payment
+            </Link>
           </p>
         </div>
       </div>

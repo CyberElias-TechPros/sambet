@@ -101,6 +101,31 @@ export const SCHEMA_STATEMENTS: string[] = [
     count        INTEGER NOT NULL DEFAULT 1,
     window_start INTEGER NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS submissions (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    reference         TEXT NOT NULL UNIQUE,
+    org_name          TEXT NOT NULL,
+    phone             TEXT NOT NULL,
+    state             TEXT,
+    bank              TEXT NOT NULL,
+    account_number    TEXT NOT NULL,
+    account_name      TEXT,
+    amount_paid       INTEGER NOT NULL DEFAULT 1000,
+    payment_date      TEXT,
+    payment_reference TEXT,
+    notes             TEXT,
+    pop_key           TEXT NOT NULL,
+    status            TEXT NOT NULL DEFAULT 'pending',
+    org_id            INTEGER REFERENCES organizations(id),
+    reviewed_by       INTEGER REFERENCES users(id),
+    reviewed_at       TEXT,
+    rejection_reason  TEXT,
+    created_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_submissions_status ON submissions(status)`,
+  `CREATE INDEX IF NOT EXISTS idx_submissions_created ON submissions(created_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_submissions_phone ON submissions(phone)`,
+  `CREATE INDEX IF NOT EXISTS idx_submissions_account ON submissions(account_number)`,
 ];
 
 /** (table, column, type) additions from migration 0002, for databases
@@ -127,9 +152,9 @@ export function ensureSchema(db: D1Database): Promise<void> {
     schemaPromise = (async () => {
       // Probe first; if the schema is already there this is one cheap query.
       const row = await db.prepare(
-        `SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('users','organizations','imports','audit_log','rate_limits','sessions')`,
+        `SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('users','organizations','imports','audit_log','rate_limits','sessions','submissions')`,
       ).all<{ name: string }>();
-      if (row.results.length < 6) {
+      if (row.results.length < 7) {
         await db.batch(SCHEMA_STATEMENTS.map((sql) => db.prepare(sql)));
         return;
       }

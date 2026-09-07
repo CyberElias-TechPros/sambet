@@ -91,6 +91,27 @@ export function actionLabel(action: string): string {
     'import.rejected': 'Import rejected',
     'user.created': 'Team member added',
     'user.updated': 'Team member updated',
+    'submission.public': 'Public submission received',
+    'submission.verified': 'Submission verified',
+    'submission.rejected': 'Submission rejected',
   };
   return labels[action] ?? action;
 }
+
+/** Naira amount with separators: 1500 → "₦1,500". */
+export function formatNaira(n: number | null | undefined): string {
+  if (n == null || Number.isNaN(n)) return '₦0';
+  return `₦${n.toLocaleString('en-NG')}`;
+}
+
+export const SUBMISSION_STATUS_LABELS: Record<string, string> = {
+  pending: 'Pending',
+  verified: 'Verified',
+  rejected: 'Rejected',
+};
+
+export const MATCH_LABELS: Record<string, string> = {
+  phone: 'Same phone',
+  account: 'Same account',
+  'name+state': 'Same name + state',
+};

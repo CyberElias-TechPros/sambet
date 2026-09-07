@@ -42,6 +42,53 @@ export function HBarChart({
   );
 }
 
+/** Vertical stacked bars — daily submission volume split by outcome. */
+export function TrendBars({
+  data,
+  height = 120,
+}: {
+  data: { label: string; verified: number; rejected: number; pending: number }[];
+  height?: number;
+}) {
+  const max = Math.max(1, ...data.map((d) => d.verified + d.rejected + d.pending));
+  if (!data.length) return <p className="px-1 py-8 text-center text-sm text-ink-faint">No data yet</p>;
+  return (
+    <div>
+      <div className="flex items-end gap-[3px]" style={{ height }}>
+        {data.map((d, i) => {
+          const total = d.verified + d.rejected + d.pending;
+          const h = (n: number) => (total === 0 ? 0 : Math.max(total > 0 && n > 0 ? 3 : 0, (n / max) * height));
+          const isLast = i === data.length - 1;
+          return (
+            <div
+              key={d.label}
+              className="group flex h-full flex-1 flex-col justify-end gap-[2px]"
+              title={`${d.label}: ${total} submission${total === 1 ? '' : 's'} · ${d.verified} verified · ${d.rejected} rejected · ${d.pending} pending`}
+            >
+              {d.rejected > 0 && <div className="rounded-t-[3px] bg-rose-300" style={{ height: h(d.rejected) }} />}
+              {d.pending > 0 && <div className="rounded-t-[3px] bg-amber-300" style={{ height: h(d.pending) }} />}
+              {d.verified > 0 && <div className="rounded-t-[3px] bg-leaf-600" style={{ height: h(d.verified) }} />}
+              {total === 0 && <div className={`h-[3px] rounded-full ${isLast ? 'bg-stone-200' : 'bg-stone-100'}`} />}
+            </div>
+          );
+        })}
+      </div>
+      <div className="mt-1.5 flex gap-[3px]">
+        {data.map((d, i) => (
+          <span key={d.label} className="flex-1 text-center text-[9.5px] tabular-nums text-ink-faint">
+            {i % 2 === 0 || i === data.length - 1 ? d.label : ''}
+          </span>
+        ))}
+      </div>
+      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-ink-soft">
+        <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-[3px] bg-leaf-600" /> Verified</span>
+        <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-[3px] bg-amber-300" /> Pending</span>
+        <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-[3px] bg-rose-300" /> Rejected</span>
+      </div>
+    </div>
+  );
+}
+
 export function DonutChart({
   data,
   centerLabel,

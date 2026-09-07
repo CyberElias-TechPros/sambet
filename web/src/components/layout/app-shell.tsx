@@ -1,12 +1,13 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard,
   Building2,
   Upload,
+  Inbox,
   ScrollText,
   Settings,
   LogOut,
@@ -14,7 +15,9 @@ import {
   Menu,
   X,
   Users,
+  ExternalLink,
 } from 'lucide-react';
+import { api } from '@/lib/api';
 import { useAuth } from '@/hooks/use-auth';
 import { initials } from '@/lib/format';
 
@@ -22,10 +25,31 @@ const NAV = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/organizations', label: 'Organizations', icon: Building2 },
   { href: '/import', label: 'Import', icon: Upload },
+  { href: '/submissions', label: 'Submissions', icon: Inbox },
   { href: '/team', label: 'Team', icon: Users, adminOnly: true },
   { href: '/audit', label: 'Audit log', icon: ScrollText },
   { href: '/settings', label: 'Settings', icon: Settings },
 ];
+
+/** Live pending-submission count for the nav badge (polled every 60 s). */
+function usePendingSubmissions() {
+  const [pending, setPending] = useState<number | null>(null);
+  useEffect(() => {
+    let live = true;
+    const load = () =>
+      api
+        .listSubmissions(1, 1)
+        .then((r) => live && setPending(r.summary.pending))
+        .catch(() => {});
+    load();
+    const t = setInterval(load, 60000);
+    return () => {
+      live = false;
+      clearInterval(t);
+    };
+  }, []);
+  return pending;
+}
 
 function Brand() {
   return (
@@ -46,6 +70,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { user, logout } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const pendingSubs = usePendingSubmissions();
 
   const items = NAV.filter((i) => !i.adminOnly || user?.role === 'admin');
 
@@ -53,6 +78,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <nav className="mt-6 flex flex-1 flex-col gap-1 px-3">
       {items.map((item) => {
         const active = pathname.startsWith(item.href);
+        const badge = item.href === '/submissions' && (pendingSubs ?? 0) > 0 ? (pendingSubs as number) : null;
         return (
           <Link
             key={item.href}
@@ -65,10 +91,24 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             }`}
           >
             <item.icon className={`h-[18px] w-[18px] ${active ? 'text-leaf-300' : 'text-leaf-200/40 group-hover:text-leaf-200/80'}`} />
-            {item.label}
+            <span className="flex-1">{item.label}</span>
+            {badge != null && (
+              <span className="rounded-full bg-amber-400 px-1.5 py-0.5 text-[10.5px] font-bold tabular-nums text-bark-950">
+                {badge}
+              </span>
+            )}
           </Link>
         );
       })}
+      <a
+        href="/submit"
+        target="_blank"
+        rel="noreferrer"
+        className="mt-3 flex items-center gap-2.5 rounded-xl px-3 py-2 text-[12px] font-medium text-leaf-200/40 transition hover:bg-white/5 hover:text-leaf-100"
+      >
+        <ExternalLink className="h-3.5 w-3.5" />
+        Public registration portal
+      </a>
     </nav>
   );
 

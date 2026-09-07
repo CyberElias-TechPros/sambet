@@ -8,7 +8,13 @@ import type {
   OrgFiltersState,
   OrgInput,
   PageMeta,
+  PublicStatus,
+  PublicSubmitResult,
   Stats,
+  Submission,
+  SubmissionDetail,
+  SubmissionStats,
+  SubmissionSummary,
   TeamMember,
   User,
 } from './types';
@@ -122,4 +128,28 @@ export const api = {
   // downloads (return URLs for same-origin fetch-as-download)
   exportUrl: (f: OrgFiltersState, format: 'xlsx' | 'csv') => `/api/organizations/export?format=${format}${toQuery(f)}`,
   templateUrl: () => '/api/organizations/template',
+
+  // public self-registration (no auth)
+  publicSubmit: (fd: FormData) => request<{ data: PublicSubmitResult }>('/public/submit', { method: 'POST', body: fd }),
+  publicStatus: (reference: string) =>
+    request<{ data: PublicStatus }>(`/public/status/${encodeURIComponent(reference)}`),
+
+  // submissions queue (staff)
+  listSubmissions: (page = 1, pageSize = 20, status?: string, q?: string) =>
+    request<{ data: Submission[]; meta: PageMeta; summary: SubmissionSummary }>(
+      `/submissions?page=${page}&pageSize=${pageSize}${status ? `&status=${encodeURIComponent(status)}` : ''}${q ? `&q=${encodeURIComponent(q)}` : ''}`,
+    ),
+  getSubmission: (id: number) => request<{ data: SubmissionDetail }>(`/submissions/${id}`),
+  verifySubmission: (id: number, body: { action: 'create'; org: OrgInput } | { action: 'link'; orgId: number }) =>
+    request<{ data: { reference: string; status: string; org: { id: number; name: string } } }>(
+      `/submissions/${id}/verify`,
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
+  rejectSubmission: (id: number, reason: string) =>
+    request<{ data: { reference: string; status: string } }>(`/submissions/${id}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }),
+  submissionStats: () => request<SubmissionStats>('/submissions/stats'),
+  submissionPopUrl: (id: number) => `/api/submissions/${id}/pop`,
 };
