@@ -39,7 +39,7 @@ export function Button({
   return (
     <button
       disabled={disabled || loading}
-      className={`inline-flex items-center justify-center rounded-lg font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-leaf-500 focus-visible:ring-offset-2 ${sizes[size]} ${BUTTON_STYLES[variant]} ${className}`}
+      className={`inline-flex items-center justify-center rounded-lg font-medium transition-all active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-leaf-500 focus-visible:ring-offset-2 disabled:active:scale-100 ${sizes[size]} ${BUTTON_STYLES[variant]} ${className}`}
       {...rest}
     >
       {loading && <Loader2 className="h-4 w-4 animate-spin" />}
@@ -116,7 +116,7 @@ export function Badge({
     sky: 'bg-sky-50 text-sky-700 ring-sky-200',
   };
   return (
-    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset ${tones[tone]} ${className}`}>
+    <span className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset ${tones[tone]} ${className}`}>
       {children}
     </span>
   );
@@ -200,7 +200,7 @@ export function Segmented<T extends string>({
         <button
           key={o.value}
           onClick={() => onChange(o.value)}
-          className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
+          className={`rounded-md px-3 py-1.5 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-leaf-500 ${
             value === o.value ? 'bg-white text-ink shadow-sm' : 'text-ink-soft hover:text-ink'
           }`}
         >
