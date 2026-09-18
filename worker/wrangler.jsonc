@@ -11,7 +11,7 @@
     {
       "binding": "DB",
       "database_name": "sambet-db",
-      "database_id": "00000000-0000-4000-8000-000000000001"
+      "database_id": "12c91ca9-d4e1-474d-93c8-74738de7ac03"
     }
   ],
   // R2: stores uploaded import files (audit archive) + short-lived import payloads.
